@@ -14,18 +14,23 @@ UI_HTML_PATH = Path(__file__).parent / "ui.html"
 MULTI_JOIN = ", "
 EMPTY_TOKEN = "-"
 
+# --- Column candidates (case-insensitive, spaces/_/- ignored) ---
 TIER1_COL_CANDIDATES = [
     "Tier 1", "Tier1", "Tier 1 Supplier", "Tier1 Supplier",
     "Tire 1", "Tire1",
     "Supplier Tier 1", "Supplier_Tier1",
-    "Top Supplier", "Primary Supplier"
+    "Top Supplier", "Primary Supplier",
+    # common in your files:
+    "Supplier Family", "SupplierFamily", "Supplier", "Supplier Name", "Tier1_Supplier"
 ]
 LATEST_COMPANY_CANDIDATES = [
     "LatestCompanyName", "Latest Company Name", "LatestCompany",
     "CompanyName_Latest"
 ]
 DIEFAM_CANDIDATES = [
-    "DieFamily", "Die Family", "TechDieFamily", "Die_Family"
+    "DieFamily", "Die Family", "TechDieFamily", "Die_Family",
+    # common in your files:
+    "Die Family key", "DieFamilyKey", "Die_Family_Key"
 ]
 NON_FEATURE_CANDIDATES = [
     "PartID", "Part Id", "Part_ID",
@@ -33,7 +38,8 @@ NON_FEATURE_CANDIDATES = [
     "ItemID", "Item Id",
     "CompanyName", "Company Name",
     "LatestCompanyName", "Latest Company Name",
-    "Supplier", "Tier 1", "Tier1", "Tier 1 Supplier", "Tier1 Supplier",
+    "Supplier", "Supplier Family",
+    "Tier 1", "Tier1", "Tier 1 Supplier", "Tier1 Supplier",
     "Family", "Generic", "Series",
     "MaskedTextNon", "Status", "FinalStatus"
 ]
@@ -64,6 +70,7 @@ def split_cell_to_values(x):
     s = str(x).strip()
     if not s:
         return []
+    # tolerate existing separators, but output uses comma
     parts = re.split(r"\s*\|\|\s*|\s*\|\s*", s)
     return [p.strip() for p in parts if p and p.strip()]
 
@@ -89,8 +96,16 @@ def load_excel(uploaded_file, sheet_name):
 
 @st.cache_data(show_spinner=False)
 def build_records(df: pd.DataFrame, tier1_col: str, diefam_col: str, latest_col: str, feature_cols: list[str]):
+    # defensive: ensure unique id_vars (pandas melt pops them)
+    id_vars = [tier1_col, diefam_col, latest_col]
+    if len(set(id_vars)) != 3:
+        raise ValueError("Mapping error: Tier1 / DieFamily / LatestCompany must be 3 DIFFERENT columns.")
+
+    # also ensure selected feature cols don't overlap with id_vars
+    feature_cols = [c for c in feature_cols if c not in id_vars]
+
     long_df = df.melt(
-        id_vars=[tier1_col, diefam_col, latest_col],
+        id_vars=id_vars,
         value_vars=feature_cols,
         var_name="FeatureName",
         value_name="FeatureValue",
@@ -109,6 +124,7 @@ def build_records(df: pd.DataFrame, tier1_col: str, diefam_col: str, latest_col:
         .rename(columns={"FeatureValue": "Count"})
     )
     merged = agg_val.merge(agg_cnt, on=[tier1_col, diefam_col, latest_col, "FeatureName"], how="left")
+
     companies = sorted([c for c in merged[latest_col].dropna().astype(str).unique().tolist() if c.strip()])
 
     records = []
@@ -128,13 +144,7 @@ def build_records(df: pd.DataFrame, tier1_col: str, diefam_col: str, latest_col:
             values[comp] = str(v).strip() if pd.notna(v) and str(v).strip() else EMPTY_TOKEN
             counts[comp] = int(r["Count"]) if pd.notna(r["Count"]) else 0
 
-        records.append({
-            "tier1": t,
-            "dieFamily": d,
-            "feature": f,
-            "values": values,
-            "counts": counts,
-        })
+        records.append({"tier1": t, "dieFamily": d, "feature": f, "values": values, "counts": counts})
 
     records.sort(key=lambda x: (x["tier1"], x["dieFamily"], x["feature"]))
     return companies, records
@@ -179,13 +189,26 @@ with st.sidebar:
     diefam_col = st.selectbox("DieFamily column", options=df.columns.tolist(), index=df.columns.get_loc(auto_die))
     latest_col = st.selectbox("LatestCompanyName column", options=df.columns.tolist(), index=df.columns.get_loc(auto_latest))
 
+    # mapping validation (prevents pandas melt KeyError)
+    chosen = [tier1_col, diefam_col, latest_col]
+    if len(set(chosen)) != 3:
+        st.error("Mapping error: Tier1 / DieFamily / LatestCompany must be 3 different columns.")
+        st.stop()
+
     st.divider()
     st.subheader("Features")
     non_feature = build_non_feature_set(df)
     non_feature.update([tier1_col, diefam_col, latest_col])
     auto_features = [c for c in df.columns if c not in non_feature]
+
     manual = st.checkbox("Select features manually", value=False)
-    feature_cols = st.multiselect("Feature columns", options=auto_features, default=auto_features) if manual else auto_features
+    if manual:
+        feature_cols = st.multiselect("Feature columns", options=auto_features, default=auto_features)
+    else:
+        feature_cols = auto_features
+
+    # Safety: remove overlap if user manually picked id vars
+    feature_cols = [c for c in feature_cols if c not in chosen]
 
     st.divider()
     st.subheader("Performance")
@@ -195,8 +218,21 @@ if not feature_cols:
     st.error("No feature columns selected.")
     st.stop()
 
-with st.spinner("Aggregating features for the UI..."):
-    companies, records = build_records(df, tier1_col, diefam_col, latest_col, feature_cols)
+# Optional: show columns (helps debugging on Cloud)
+with st.expander("Debug: show detected columns"):
+    st.write("Columns:", list(df.columns))
+    st.write("Tier1:", tier1_col)
+    st.write("DieFamily:", diefam_col)
+    st.write("LatestCompany:", latest_col)
+    st.write("Feature columns:", len(feature_cols))
+
+try:
+    with st.spinner("Aggregating features for the UI..."):
+        companies, records = build_records(df, tier1_col, diefam_col, latest_col, feature_cols)
+except Exception as e:
+    st.error("Failed while building the view. Check your mapping and sheet.")
+    st.exception(e)
+    st.stop()
 
 if len(records) > int(max_records):
     records = records[: int(max_records)]

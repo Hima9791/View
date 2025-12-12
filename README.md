@@ -1,23 +1,19 @@
 # Option A (Single-root): Streamlit + Embedded Web UI (no folders)
 
-This version keeps **everything in the repo root**:
+Files in repo root:
 - `app.py` (Streamlit backend)
-- `ui.html` (single-file front-end, no build step)
+- `ui.html` (single-file front-end)
 - `requirements.txt`
 
-✅ Works on Streamlit Cloud without Node / npm.
-
-## Run locally
+## Run
 ```bash
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## Deploy on Streamlit Cloud (GitHub)
-1. Push these files to GitHub.
-2. In Streamlit Cloud:
-   - Main file: `app.py`
+## Deploy (Streamlit Cloud)
+- Main file: `app.py`
 
-## Notes
-- UI is a single HTML/CSS/JS file embedded via Streamlit `components.html`.
-- Multi-values are joined with comma: `", "` (no `||`).
+### Common error fixed in v2
+If you accidentally map the **same column** for Tier1 / DieFamily / LatestCompany, pandas `melt()` will crash.
+This version validates mapping and shows a friendly error instead.
