@@ -1,0 +1,711 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Supplier × DieFamily Explorer</title>
+  <style>
+    :root{
+      --bg:#f6f7fb;
+      --card:#ffffff;
+      --text:#0b1220;
+      --muted:#5b6577;
+      --border:#e6e8ef;
+      --shadow: 0 12px 40px rgba(14, 24, 45, 0.08);
+      --primary:#0b5fff;
+      --primary-2:#eaf1ff;
+      --chip:#f3f6ff;
+    }
+    *{ box-sizing:border-box; }
+    html,body{ height:100%; }
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .shell{ max-width: 1480px; margin: 0 auto; padding: 18px 18px 48px; }
+    .topbar{ display:flex; align-items:center; justify-content:space-between; gap:14px; margin-bottom:14px; }
+    .brand{ display:flex; align-items:center; gap:10px; }
+    .logo{
+      width: 34px; height: 34px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--primary), #7c3aed);
+      box-shadow: 0 10px 30px rgba(11,95,255,0.25);
+    }
+    .brand h1{ margin:0; font-size:16px; letter-spacing:.2px; }
+    .brand small{ display:block; color:var(--muted); font-size:12px; margin-top:2px; }
+
+    .layout{ display:grid; grid-template-columns: 320px 1fr; gap:14px; align-items:start; }
+    .card{
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+    }
+    .sidebar{ position: sticky; top: 14px; padding: 14px; }
+    .main{ padding: 0; overflow:hidden; }
+
+    .h{ font-size:13px; font-weight:950; margin:0 0 10px 0; }
+    .p{ margin:0 0 10px 0; color:var(--muted); font-size:12px; }
+
+    .field{ margin-bottom:10px; }
+    .label{ font-size:11px; color:var(--muted); margin-bottom:6px; font-weight:800; }
+    .select,.input{
+      width:100%;
+      padding:10px 10px;
+      border-radius:12px;
+      border:1px solid var(--border);
+      outline:none;
+      background:#fff;
+    }
+    .select:focus,.input:focus{
+      border-color: rgba(11,95,255,0.45);
+      box-shadow: 0 0 0 4px rgba(11,95,255,0.10);
+    }
+    .row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .btn{
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 12px;
+      padding: 10px 12px;
+      cursor:pointer;
+      box-shadow: 0 6px 18px rgba(14,24,45,0.05);
+      font-weight: 900;
+      font-size: 12px;
+    }
+    .btn.primary{
+      border-color: rgba(11,95,255,0.25);
+      background: linear-gradient(180deg, #ffffff, var(--primary-2));
+    }
+    .btn:disabled{ opacity:.6; cursor:not-allowed; }
+
+    .kpis{
+      display:grid;
+      grid-template-columns: repeat(4, minmax(0,1fr));
+      gap: 10px;
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+      background:#fff;
+    }
+    .kpi{ padding: 10px; border-radius: 14px; background: #fbfcff; border: 1px solid var(--border); }
+    .kpi .t{ font-size:11px; color:var(--muted); font-weight:800; }
+    .kpi .v{ font-size:18px; font-weight: 950; margin-top:2px; }
+
+    .tabs{ display:flex; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); background:#fff; }
+    .tab{
+      font-size: 12px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      color: var(--muted);
+      cursor:pointer;
+      user-select:none;
+      font-weight: 950;
+    }
+    .tab.active{ color: var(--text); background: var(--primary-2); border-color: rgba(11,95,255,0.18); }
+
+    .pageHeader{ padding: 12px; border-bottom: 1px solid var(--border); background:#fff; }
+    .breadcrumb{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:6px; color:var(--muted); font-size:12px; }
+    .breadcrumb .sep{ color:#b4bccb; }
+    .pageTitle{ font-size:16px; font-weight: 950; margin:0; }
+    .badges{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+    .badge{
+      font-size: 11px;
+      padding: 5px 9px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: #fbfcff;
+      color: var(--muted);
+      font-weight: 900;
+    }
+
+    .compareBar{
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+      display:flex;
+      justify-content:space-between;
+      gap: 12px;
+      flex-wrap:wrap;
+      background:#fff;
+    }
+    .chips{ display:flex; flex-wrap:wrap; gap: 8px; align-items:center; }
+    .chip{
+      display:inline-flex; align-items:center; gap:8px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--chip);
+      font-size: 12px;
+      font-weight: 950;
+    }
+    .chip .x{ border:none; background:transparent; cursor:pointer; color:#7b879a; font-weight: 950; line-height:1; }
+
+    .section{ padding: 12px; background:#fff; }
+    .sectionTitle{ font-size: 13px; font-weight: 950; margin: 14px 0 8px; color: #111827; }
+    .feature{ border: 1px solid var(--border); border-radius: 14px; background: #fff; padding: 10px; margin-bottom: 10px; }
+    .featureTop{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px; }
+    .featureName{ font-size: 12.5px; font-weight: 950; }
+    .pill{
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #f3f5fb;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-weight: 950;
+    }
+    .pill.diff{ background: rgba(22,163,74,0.08); border-color: rgba(22,163,74,0.25); color: #166534; }
+    .pill.same{ background: rgba(91,101,119,0.08); }
+    .pill.empty{ background: rgba(217,119,6,0.08); border-color: rgba(217,119,6,0.25); color: #92400e; }
+
+    .tiles{ display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+    .tile{ border: 1px solid var(--border); border-radius: 12px; padding: 10px; background: #fbfcff; }
+    .tile .c{ font-size:11px; color:var(--muted); margin-bottom:6px; font-weight: 950; }
+    .tile .v{ font-size:12px; line-height:1.25rem; font-weight: 900; }
+    .tile .v.miss{ color:#98a2b3; font-weight: 900; }
+
+    .tableWrap{
+      overflow:auto;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background:#fff;
+      margin: 12px;
+    }
+    table{ width:100%; border-collapse: collapse; min-width: 900px; }
+    th, td{ border-bottom: 1px solid var(--border); padding: 10px 10px; font-size: 12px; vertical-align: top; font-weight: 800; }
+    th{ position: sticky; top: 0; background: #fbfcff; text-align:left; font-weight: 950; }
+    td.miss{ color:#98a2b3; }
+
+    .modalBackdrop{
+      position: fixed;
+      top:0; left:0; right:0; bottom:0;
+      background: rgba(17,24,39,0.35);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index: 9999;
+      padding: 16px;
+    }
+    .modal{
+      width: min(780px, 100%);
+      max-height: min(720px, 90vh);
+      overflow:hidden;
+      display:flex;
+      flex-direction: column;
+      background:#fff;
+      border:1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+    }
+    .modalHeader{
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+      display:flex;
+      justify-content: space-between;
+      align-items:center;
+      gap: 10px;
+      background:#fff;
+    }
+    .modalBody{ padding: 12px; overflow:auto; }
+    .listItem{
+      display:flex;
+      gap: 10px;
+      align-items:center;
+      padding: 10px 8px;
+      border-radius: 12px;
+    }
+    .listItem:hover{ background:#f7f9ff; }
+    .listItem .meta{ color:var(--muted); font-size: 11px; font-weight: 900; }
+    @media (max-width: 1180px){
+      .layout{ grid-template-columns: 1fr; }
+      .sidebar{ position: static; }
+      .tiles{ grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .kpis{ grid-template-columns: repeat(2, minmax(0,1fr)); }
+    }
+    @media (max-width: 720px){
+      .tiles{ grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <div class="modalBackdrop" id="companyModal">
+    <div class="modal">
+      <div class="modalHeader">
+        <div>
+          <div class="h" style="margin:0;">Select companies</div>
+          <div class="p" style="margin:0;">Ranked by coverage for current Supplier + DieFamily.</div>
+        </div>
+        <button class="btn" id="closeModalBtn">Close</button>
+      </div>
+      <div class="modalBody">
+        <div class="field">
+          <div class="label">Search company</div>
+          <input class="input" id="companySearch" placeholder="Type company name..." />
+        </div>
+        <div id="companyList"></div>
+      </div>
+      <div class="modalHeader">
+        <button class="btn" id="clearCompaniesBtn">Clear</button>
+        <button class="btn primary" id="doneCompaniesBtn">Done</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const data = window.__APP_DATA__ || { meta:{}, companies:[], records:[] };
+  const EMPTY = "-";
+
+  function groupFeatureName(fn){
+    const s = (fn||"").toLowerCase();
+    if (s.includes("family") || s.includes("gen_") || s.includes("generic") || s.includes("series")) return "Identity";
+    if (s.includes("package") || s.includes("pinout") || s.includes("footprint")) return "Package & Pinout";
+    if (s.includes("packing") || s.includes("packaging") || s.includes("quantity") || s.includes("reel") || s.includes("tape")) return "Packing";
+    if (s.includes("lifecycle") || s.includes("partlc")) return "Lifecycle";
+    if (s.includes("rohs") || s.includes("leadfinish") || s.includes("compliance")) return "Compliance";
+    if (["gain", "voltage", "current", "power", "bandwidth", "frequency"].some(k => s.includes(k))) return "Electrical / Performance";
+    return "Other";
+  }
+  function uniqSorted(arr){
+    const set = new Set(arr.filter(x=>String(x||"").trim()!=="").map(x=>String(x)));
+    return Array.from(set).sort((a,b)=>a.localeCompare(b));
+  }
+  function safe(v){ return (v===null||v===undefined) ? "" : String(v); }
+  function csvEscape(s){
+    s = safe(s);
+    if (s.includes(",") || s.includes('"') || s.includes("\\n")) return '"' + s.replaceAll('"','""') + '"';
+    return s;
+  }
+  function download(filename, text, mime){
+    const blob = new Blob([text], {type: mime || "text/csv"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a);
+    a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  const suppliers = uniqSorted(data.records.map(r=>r.tier1));
+  const state = {
+    tab: "product",
+    supplier: suppliers[0] || "",
+    die: "",
+    featureSearch: "",
+    onlyDiff: true,
+    hideEmpty: true,
+    selectedCompanies: [],
+    companySearch: ""
+  };
+
+  function dieFamiliesForSupplier(supp){
+    return uniqSorted(data.records.filter(r=>r.tier1===supp).map(r=>r.dieFamily));
+  }
+  function scopedRecords(){
+    return data.records.filter(r=>r.tier1===state.supplier && r.dieFamily===state.die);
+  }
+  function coverageRank(){
+    const scoped = scopedRecords();
+    const comps = data.companies;
+    const scores = comps.map(c=>{
+      let filled=0;
+      for (const r of scoped){
+        const v = safe((r.values||{})[c]).trim();
+        if (v && v!==EMPTY && v.toLowerCase()!=="nan") filled++;
+      }
+      return {c, filled};
+    });
+    scores.sort((a,b)=> (b.filled-a.filled) || a.c.localeCompare(b.c));
+    return scores;
+  }
+  function ensureDefaults(){
+    if (!state.die){
+      const dies = dieFamiliesForSupplier(state.supplier);
+      state.die = dies[0] || "";
+    }
+    if (state.selectedCompanies.length===0){
+      const rank = coverageRank();
+      state.selectedCompanies = rank.slice(0, 6).map(x=>x.c);
+    }
+  }
+  function featureStatus(rec){
+    const vals = state.selectedCompanies
+      .map(c=> safe((rec.values||{})[c]).trim())
+      .filter(v=> v && v!==EMPTY && v.toLowerCase()!=="nan");
+    if (state.hideEmpty && vals.length===0) return "HIDE";
+    const uniq = new Set(vals).size;
+    if (state.onlyDiff && uniq<=1) return "HIDE";
+    if (vals.length===0) return "EMPTY";
+    if (uniq<=1) return "SAME";
+    return "DIFF";
+  }
+
+  function renderCompanyModal(){
+    const modal = document.getElementById("companyModal");
+    const list = document.getElementById("companyList");
+    const q = (state.companySearch||"").toLowerCase().trim();
+    const rank = coverageRank().filter(x=> !q || x.c.toLowerCase().includes(q));
+
+    list.innerHTML = rank.map(({c, filled})=>{
+      const checked = state.selectedCompanies.includes(c) ? "checked" : "";
+      return `
+        <label class="listItem">
+          <input type="checkbox" data-company="${c}" ${checked}/>
+          <div style="flex:1;">
+            <div style="font-size:12px;font-weight:950;">${c}</div>
+            <div class="meta">Coverage: ${filled} features</div>
+          </div>
+        </label>
+      `;
+    }).join("");
+
+    list.querySelectorAll('input[type="checkbox"][data-company]').forEach(cb=>{
+      cb.addEventListener("change", (e)=>{
+        const company = e.target.getAttribute("data-company");
+        const isChecked = e.target.checked;
+        if (isChecked){
+          if (!state.selectedCompanies.includes(company)){
+            state.selectedCompanies.push(company);
+            if (state.selectedCompanies.length > 10){
+              state.selectedCompanies = state.selectedCompanies.slice(0,10);
+              e.target.checked = false;
+            }
+          }
+        } else {
+          state.selectedCompanies = state.selectedCompanies.filter(x=>x!==company);
+        }
+      });
+    });
+
+    modal.style.display = "flex";
+  }
+  function closeCompanyModal(){
+    document.getElementById("companyModal").style.display = "none";
+  }
+
+  function renderMainContent(grouped, matrixCols, matrixRows, countsRows){
+    if (state.tab === "product"){
+      const chips = state.selectedCompanies.map(c=>`
+        <span class="chip">
+          ${c}
+          <button class="x" data-remove-company="${c}" title="Remove">×</button>
+        </span>
+      `).join("");
+
+      const sectionsHtml = Array.from(grouped.entries()).map(([sectionName, feats])=>{
+        const visible = feats
+          .map(r=>({r, s: featureStatus(r)}))
+          .filter(x => x.s !== "HIDE");
+
+        if (!visible.length) return "";
+
+        const blocks = visible.map(({r, s})=>{
+          const pillClass = (s==="DIFF") ? "pill diff" : (s==="SAME") ? "pill same" : "pill empty";
+          const tiles = state.selectedCompanies.map(c=>{
+            const v = safe((r.values||{})[c]).trim() || EMPTY;
+            const miss = (!v || v===EMPTY || v.toLowerCase()==="nan");
+            return `
+              <div class="tile">
+                <div class="c">${c}</div>
+                <div class="v ${miss ? "miss":""}">${miss ? "—" : v}</div>
+              </div>
+            `;
+          }).join("");
+
+          return `
+            <div class="feature">
+              <div class="featureTop">
+                <div class="featureName">${safe(r.feature)}</div>
+                <span class="${pillClass}">${s==="DIFF" ? "Differences" : s==="SAME" ? "Same" : "Empty"}</span>
+              </div>
+              <div class="tiles">${tiles}</div>
+            </div>
+          `;
+        }).join("");
+
+        return `
+          <div>
+            <div class="sectionTitle">${sectionName}</div>
+            ${blocks}
+          </div>
+        `;
+      }).join("");
+
+      return `
+        <div class="pageHeader">
+          <div class="breadcrumb">
+            <span>Catalog</span><span class="sep">›</span>
+            <span>${state.supplier}</span><span class="sep">›</span>
+            <span>${state.die}</span>
+          </div>
+          <h2 class="pageTitle">${state.die} (Supplier: ${state.supplier})</h2>
+          <div class="badges">
+            <span class="badge">Compare view</span>
+            <span class="badge">Only diff: ${state.onlyDiff ? "ON":"OFF"}</span>
+            <span class="badge">Hide empty: ${state.hideEmpty ? "ON":"OFF"}</span>
+          </div>
+        </div>
+
+        <div class="compareBar">
+          <div>
+            <div class="label">Selected companies</div>
+            <div class="chips">
+              ${chips || `<span class="badge">None selected</span>`}
+            </div>
+          </div>
+          <div class="row">
+            <button class="btn" id="top4Btn2">Top 4</button>
+            <button class="btn" id="top6Btn2">Top 6</button>
+            <button class="btn" id="top8Btn2">Top 8</button>
+          </div>
+        </div>
+
+        <div class="section">${sectionsHtml || `<div class="p">No features matched your filters.</div>`}</div>
+      `;
+    }
+
+    function renderTable(cols, rows, isCounts){
+      const head = cols.map(c=>`<th>${c}</th>`).join("");
+      const body = rows.slice(0, 2000).map(r=>{
+        const tds = cols.map(c=>{
+          const v = r[c];
+          if (c==="Tier1_Supplier" || c==="DieFamily" || c==="FeatureName"){
+            return `<td>${safe(v)}</td>`;
+          }
+          if (isCounts){
+            const n = Number(v||0);
+            return `<td class="${n===0 ? "miss":""}">${n}</td>`;
+          }
+          const s = safe(v) || EMPTY;
+          return `<td class="${(s===EMPTY) ? "miss":""}">${s}</td>`;
+        }).join("");
+        return `<tr>${tds}</tr>`;
+      }).join("");
+      return `<div class="tableWrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+    }
+
+    if (state.tab === "matrix"){
+      return `
+        <div class="section">
+          <div class="h">Values Matrix</div>
+          <div class="p">Power view for auditing. Use Product Page for the clean compare experience.</div>
+        </div>
+        ${renderTable(matrixCols, matrixRows, false)}
+      `;
+    }
+
+    return `
+      <div class="section">
+        <div class="h">Counts Matrix</div>
+        <div class="p">Distinct value counts per company for each feature.</div>
+      </div>
+      ${renderTable(matrixCols, countsRows, true)}
+    `;
+  }
+
+  function render(){
+    ensureDefaults();
+
+    const dies = dieFamiliesForSupplier(state.supplier);
+    const scoped = scopedRecords();
+
+    const q = state.featureSearch.toLowerCase().trim();
+    const filtered = q ? scoped.filter(r=> safe(r.feature).toLowerCase().includes(q)) : scoped;
+
+    const grouped = new Map();
+    for (const r of filtered){
+      const g = groupFeatureName(r.feature);
+      if (!grouped.has(g)) grouped.set(g, []);
+      grouped.get(g).push(r);
+    }
+    for (const [k, arr] of grouped.entries()){
+      arr.sort((a,b)=> safe(a.feature).localeCompare(safe(b.feature)));
+      grouped.set(k, arr);
+    }
+
+    const matrixCols = ["Tier1_Supplier","DieFamily","FeatureName", ...data.companies];
+    const matrixRows = scoped.map(r=>{
+      const row = { Tier1_Supplier: r.tier1, DieFamily: r.dieFamily, FeatureName: r.feature };
+      for (const c of data.companies) row[c] = safe((r.values||{})[c]) || EMPTY;
+      return row;
+    }).sort((a,b)=> safe(a.FeatureName).localeCompare(safe(b.FeatureName)));
+
+    const countsRows = scoped.map(r=>{
+      const row = { Tier1_Supplier: r.tier1, DieFamily: r.dieFamily, FeatureName: r.feature };
+      for (const c of data.companies) row[c] = Number((r.counts||{})[c] || 0);
+      return row;
+    }).sort((a,b)=> safe(a.FeatureName).localeCompare(safe(b.FeatureName)));
+
+    const app = document.getElementById("app");
+
+    const html = `
+      <div class="shell">
+        <div class="topbar">
+          <div class="brand">
+            <div class="logo"></div>
+            <div>
+              <h1>Supplier × DieFamily Explorer</h1>
+              <small>${safe(data.meta.fileName) ? ("File: " + safe(data.meta.fileName) + " • ") : ""}Records: ${safe(data.meta.recordCount || data.records.length)}</small>
+            </div>
+          </div>
+          <div class="row">
+            <button class="btn" id="exportValuesBtn">Export Values CSV</button>
+            <button class="btn" id="exportCountsBtn">Export Counts CSV</button>
+          </div>
+        </div>
+
+        <div class="layout">
+          <div class="card sidebar">
+            <div class="h">Filters</div>
+            <div class="p">Browse like a distributor: Supplier → DieFamily → compare companies.</div>
+
+            <div class="field">
+              <div class="label">Tier-1 Supplier</div>
+              <select class="select" id="supplierSelect">
+                ${suppliers.map(s=>`<option value="${s}" ${s===state.supplier?"selected":""}>${s}</option>`).join("")}
+              </select>
+            </div>
+
+            <div class="field">
+              <div class="label">DieFamily</div>
+              <select class="select" id="dieSelect">
+                ${dies.map(d=>`<option value="${d}" ${d===state.die?"selected":""}>${d}</option>`).join("")}
+              </select>
+            </div>
+
+            <div class="field">
+              <div class="label">Search features</div>
+              <input class="input" id="featureSearch" value="${safe(state.featureSearch).replaceAll('"','&quot;')}" placeholder="Package, LeadFinish, Gain..." />
+            </div>
+
+            <div class="field">
+              <label class="label" style="display:flex;gap:10px;align-items:center;">
+                <input type="checkbox" id="onlyDiff" ${state.onlyDiff ? "checked":""} />
+                Show only differences
+              </label>
+              <label class="label" style="display:flex;gap:10px;align-items:center;">
+                <input type="checkbox" id="hideEmpty" ${state.hideEmpty ? "checked":""} />
+                Hide empty features
+              </label>
+            </div>
+
+            <div class="field">
+              <div class="label">Compare companies</div>
+              <div class="row">
+                <button class="btn" id="top4Btn">Top 4</button>
+                <button class="btn" id="top6Btn">Top 6</button>
+                <button class="btn" id="top8Btn">Top 8</button>
+                <button class="btn primary" id="addCompaniesBtn">+ Add</button>
+              </div>
+              <div class="p" style="margin-top:10px;">Tip: keep 3–6 companies selected for a clean compare page.</div>
+            </div>
+          </div>
+
+          <div class="card main">
+            <div class="kpis">
+              <div class="kpi"><div class="t">Suppliers</div><div class="v">${suppliers.length}</div></div>
+              <div class="kpi"><div class="t">Die families</div><div class="v">${dies.length}</div></div>
+              <div class="kpi"><div class="t">Companies</div><div class="v">${data.companies.length}</div></div>
+              <div class="kpi"><div class="t">Features</div><div class="v">${scoped.length}</div></div>
+            </div>
+
+            <div class="tabs">
+              <div class="tab ${state.tab==="product"?"active":""}" data-tab="product">Product Page</div>
+              <div class="tab ${state.tab==="matrix"?"active":""}" data-tab="matrix">Matrix</div>
+              <div class="tab ${state.tab==="counts"?"active":""}" data-tab="counts">Counts</div>
+            </div>
+
+            ${renderMainContent(grouped, matrixCols, matrixRows, countsRows)}
+          </div>
+        </div>
+      </div>
+    `;
+
+    app.innerHTML = html;
+
+    // exports
+    document.getElementById("exportValuesBtn").onclick = ()=>{
+      const csv = [matrixCols.join(","), ...matrixRows.map(r=>matrixCols.map(c=>csvEscape(r[c])).join(","))].join("\\n");
+      download("Values_ByFeature.csv", csv, "text/csv");
+    };
+    document.getElementById("exportCountsBtn").onclick = ()=>{
+      const csv = [matrixCols.join(","), ...countsRows.map(r=>matrixCols.map(c=>csvEscape(r[c])).join(","))].join("\\n");
+      download("Counts_ByFeature.csv", csv, "text/csv");
+    };
+
+    // tabs
+    app.querySelectorAll(".tab[data-tab]").forEach(el=>{
+      el.onclick = ()=>{ state.tab = el.getAttribute("data-tab"); render(); };
+    });
+
+    // sidebar
+    document.getElementById("supplierSelect").onchange = (e)=>{
+      state.supplier = e.target.value;
+      state.die = "";
+      state.selectedCompanies = [];
+      render();
+    };
+    document.getElementById("dieSelect").onchange = (e)=>{
+      state.die = e.target.value;
+      state.selectedCompanies = [];
+      render();
+    };
+    document.getElementById("featureSearch").oninput = (e)=>{ state.featureSearch = e.target.value; render(); };
+    document.getElementById("onlyDiff").onchange = (e)=>{ state.onlyDiff = e.target.checked; render(); };
+    document.getElementById("hideEmpty").onchange = (e)=>{ state.hideEmpty = e.target.checked; render(); };
+
+    // top picks
+    document.getElementById("top4Btn").onclick = ()=>{ state.selectedCompanies = coverageRank().slice(0,4).map(x=>x.c); render(); };
+    document.getElementById("top6Btn").onclick = ()=>{ state.selectedCompanies = coverageRank().slice(0,6).map(x=>x.c); render(); };
+    document.getElementById("top8Btn").onclick = ()=>{ state.selectedCompanies = coverageRank().slice(0,8).map(x=>x.c); render(); };
+
+    // remove company chips
+    app.querySelectorAll("button[data-remove-company]").forEach(btn=>{
+      btn.onclick = ()=>{
+        const c = btn.getAttribute("data-remove-company");
+        state.selectedCompanies = state.selectedCompanies.filter(x=>x!==c);
+        render();
+      };
+    });
+
+    // product top buttons (if present)
+    const b4 = document.getElementById("top4Btn2");
+    if (b4){
+      b4.onclick = ()=>{ state.selectedCompanies = coverageRank().slice(0,4).map(x=>x.c); render(); };
+      document.getElementById("top6Btn2").onclick = ()=>{ state.selectedCompanies = coverageRank().slice(0,6).map(x=>x.c); render(); };
+      document.getElementById("top8Btn2").onclick = ()=>{ state.selectedCompanies = coverageRank().slice(0,8).map(x=>x.c); render(); };
+    }
+
+    // modal
+    document.getElementById("addCompaniesBtn").onclick = ()=>{
+      state.companySearch = "";
+      document.getElementById("companySearch").value = "";
+      renderCompanyModal();
+    };
+    document.getElementById("closeModalBtn").onclick = ()=>closeCompanyModal();
+    document.getElementById("doneCompaniesBtn").onclick = ()=>{ closeCompanyModal(); render(); };
+    document.getElementById("clearCompaniesBtn").onclick = ()=>{ state.selectedCompanies = []; renderCompanyModal(); };
+    document.getElementById("companySearch").oninput = (e)=>{ state.companySearch = e.target.value; renderCompanyModal(); };
+    const backdrop = document.getElementById("companyModal");
+    backdrop.onclick = (e)=>{ if (e.target === backdrop) closeCompanyModal(); };
+  }
+
+  if (!data.records.length){
+    document.getElementById("app").innerHTML = `
+      <div class="shell">
+        <div class="card" style="padding:16px;">
+          <div class="h">No data loaded</div>
+          <div class="p">Upload your Excel in Streamlit to populate this view.</div>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
