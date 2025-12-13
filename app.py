@@ -97,7 +97,7 @@ def load_data(file):
         c_str = re.sub(r"\", "", c_str)
         
         # 2. Remove double quotes and backslashes SAFELY
-        # (This replaces the line that was crashing your code)
+        # THIS IS THE FIX: We use .replace() instead of regex to avoid the SyntaxError
         c_str = c_str.replace('"', '').replace('\\', '').strip()
         
         # 3. Fix known typos
