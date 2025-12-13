@@ -12,7 +12,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for a "Fantastic" Design
 st.markdown("""
 <style>
     /* Main Background & Fonts */
@@ -83,21 +82,28 @@ st.markdown("""
 def load_data(file):
     """Loads and cleans the messy Excel/CSV data."""
     if file.name.endswith('.csv'):
-        df = pd.read_csv(file)
+        # On Bad Lines: skip them to prevent errors
+        df = pd.read_csv(file, on_bad_lines='skip')
     else:
         df = pd.read_excel(file)
     
-    # Clean Column Headers: Remove "", extra spaces, and fix typos
+    # Clean Column Headers
     clean_cols = []
     for c in df.columns:
         c_str = str(c).strip()
-        # FIX: Used double quotes for the regex pattern to prevent syntax errors
+        
+        # FIX: Replaced complex regex with simple regex to avoid SyntaxError
+        # Removes "" patterns
         c_str = re.sub(r"\", "", c_str)
+        
+        # Remove extra double quotes if any exist
+        c_str = c_str.replace('"', '').strip()
         
         # Fix known typos
         if "Supplier tire" in c_str: c_str = "Tier 1"
         if "Teir" in c_str: c_str = "Tier 1"
-        clean_cols.append(c_str.strip())
+        
+        clean_cols.append(c_str)
     
     df.columns = clean_cols
     
@@ -110,7 +116,6 @@ def aggregate_data(df, group_col, pivot_col, features):
     Aggregates data. If multiple values exist for the same cell, joins them.
     """
     # Group by the main ID and the Supplier, then aggregate features
-    # We use a lambda to join unique values with a comma
     grouped = df.groupby([group_col, pivot_col])[features].agg(
         lambda x: ", ".join(sorted(set([str(v) for v in x if v != ""])))
     ).reset_index()
@@ -134,15 +139,15 @@ with st.sidebar:
         st.header("⚙️ Configuration")
         
         # Smart Auto-Selection of Columns
-        # Tries to find 'Die Family' or defaults to the 2nd column
-        idx_die = next((i for i, c in enumerate(cols) if "Die Family" in c), 1)
-        # Tries to find 'Latest' or 'Company' or defaults to 3rd column
-        idx_sup = next((i for i, c in enumerate(cols) if "Latest" in c or "Company" in c), 2)
+        # Tries to find 'Die Family' or defaults to 2nd column
+        # Using safely defined indices
+        idx_die = 0
+        idx_sup = 0
         
-        # Safety check to keep indices in bounds
-        if idx_die >= len(cols): idx_die = 0
-        if idx_sup >= len(cols): idx_sup = 0
-        
+        for i, col in enumerate(cols):
+            if "Die Family" in col: idx_die = i
+            if "Latest" in col or "Company" in col: idx_sup = i
+
         c_die = st.selectbox("Grouping Column (e.g. Die Family)", cols, index=idx_die)
         c_supplier = st.selectbox("Supplier Column", cols, index=idx_sup)
         
@@ -178,6 +183,10 @@ if not c_features:
 
 # 1. Filter Context
 unique_groups = sorted(list(set(df[c_die].astype(str))))
+if not unique_groups:
+    st.error("No data found in the selected grouping column.")
+    st.stop()
+
 selected_group = st.selectbox("Select Component Family to Analyze:", unique_groups)
 
 # Filter Dataset
@@ -190,6 +199,7 @@ kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 num_suppliers = subset[c_supplier].nunique()
 num_features = len(c_features)
 total_records = len(subset)
+
 # Calculate top supplier safely
 if not subset.empty:
     top_supplier = subset[c_supplier].mode()[0]
@@ -205,6 +215,10 @@ st.markdown("---")
 # 3. Data Processing for Views
 agg_df = aggregate_data(subset, c_die, c_supplier, c_features)
 
+if agg_df.empty:
+    st.warning("No data available for this selection.")
+    st.stop()
+
 # VIEW A: Catalog (Suppliers = Rows, Features = Columns)
 view_catalog = agg_df.set_index(c_supplier)[c_features]
 
@@ -218,13 +232,11 @@ with tab_matrix:
     st.markdown("#### ⚔️ Head-to-Head Comparison")
     st.caption(f"Comparing **{len(c_features)} features** across **{num_suppliers} suppliers**. (Suppliers are Columns)")
     
-    # Use st.dataframe with full width for a nice grid
     st.dataframe(
         view_matrix, 
         use_container_width=True, 
         height=600,
         column_config={
-            # Apply generic styling to all columns
             col: st.column_config.TextColumn(wrap_text=True) 
             for col in view_matrix.columns
         }
