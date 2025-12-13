@@ -1,256 +1,273 @@
 import base64
 import json
 import re
-from pathlib import Path
-
-import numpy as np
 import pandas as pd
 import streamlit as st
+import numpy as np
 
+# ==========================================
+# 1. CONFIG & UTILS
+# ==========================================
+st.set_page_config(page_title="Component Explorer Pro", layout="wide", page_icon="🔬")
 
-APP_TITLE = "Supplier × DieFamily Explorer (Single-root Option A)"
-UI_HTML_PATH = Path(__file__).parent / "ui.html"
-
+APP_TITLE = "Supplier × DieFamily Explorer"
 MULTI_JOIN = ", "
 EMPTY_TOKEN = "-"
 
-# --- Column candidates (case-insensitive, spaces/_/- ignored) ---
-TIER1_COL_CANDIDATES = [
-    "Tier 1", "Tier1", "Tier 1 Supplier", "Tier1 Supplier",
-    "Tire 1", "Tire1",
-    "Supplier Tier 1", "Supplier_Tier1",
-    "Top Supplier", "Primary Supplier",
-    # common in your files:
-    "Supplier Family", "SupplierFamily", "Supplier", "Supplier Name", "Tier1_Supplier"
-]
-LATEST_COMPANY_CANDIDATES = [
-    "LatestCompanyName", "Latest Company Name", "LatestCompany",
-    "CompanyName_Latest"
-]
-DIEFAM_CANDIDATES = [
-    "DieFamily", "Die Family", "TechDieFamily", "Die_Family",
-    # common in your files:
-    "Die Family key", "DieFamilyKey", "Die_Family_Key"
-]
-NON_FEATURE_CANDIDATES = [
-    "PartID", "Part Id", "Part_ID",
-    "PartNumber", "Part Number", "PN", "MfrPartNumber",
-    "ItemID", "Item Id",
-    "CompanyName", "Company Name",
-    "LatestCompanyName", "Latest Company Name",
-    "Supplier", "Supplier Family",
-    "Tier 1", "Tier1", "Tier 1 Supplier", "Tier1 Supplier",
-    "Family", "Generic", "Series",
-    "MaskedTextNon", "Status", "FinalStatus"
-]
+# Styling for Streamlit Native
+st.markdown("""
+<style>
+    .stDataFrame { border: 1px solid #f0f2f6; border-radius: 5px; }
+    h1 { color: #2c3e50; }
+    .stTabs [data-baseweb="tab-list"] { gap: 24px; }
+    .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; background-color: #f8f9fa; border-radius: 5px; }
+    .stTabs [aria-selected="true"] { background-color: #e3f2fd; color: #1976d2; font-weight: bold;}
+</style>
+""", unsafe_allow_html=True)
 
+# Candidates for auto-mapping
+TIER1_CANDIDATES = ["Tier 1", "Tier1", "Supplier Tier 1", "Teir 1", "Teir1"]
+LATEST_CANDIDATES = ["LatestCompanyName", "Latest Company Name", "LatestCompany", "CompanyName"]
+DIEFAM_CANDIDATES = ["DieFamily", "Die Family", "Die Family key", "Die_Family_Key"]
 
+# ==========================================
+# 2. LOGIC FUNCTIONS
+# ==========================================
 def norm(s: str) -> str:
     return re.sub(r"[\s\-_]+", "", str(s).strip().lower())
 
-def find_col(df: pd.DataFrame, candidates):
+def find_col(df, candidates):
     cmap = {norm(c): c for c in df.columns}
     for cand in candidates:
-        key = norm(cand)
-        if key in cmap:
-            return cmap[key]
-    return None
-
-def build_non_feature_set(df: pd.DataFrame):
-    nset = set(norm(c) for c in NON_FEATURE_CANDIDATES)
-    cols = []
-    for c in df.columns:
-        if norm(c) in nset:
-            cols.append(c)
-    return set(cols)
+        if norm(cand) in cmap: return cmap[norm(cand)]
+    return df.columns[0]
 
 def split_cell_to_values(x):
-    if pd.isna(x):
-        return []
+    if pd.isna(x): return []
     s = str(x).strip()
-    if not s:
-        return []
-    # tolerate existing separators, but output uses comma
-    parts = re.split(r"\s*\|\|\s*|\s*\|\s*", s)
-    return [p.strip() for p in parts if p and p.strip()]
+    if not s: return []
+    return [p.strip() for p in re.split(r"\s*\|\|\s*|\s*\|\s*", s) if p.strip()]
 
-def concat_unique(series: pd.Series) -> str:
-    all_vals = []
-    for v in series:
-        all_vals.extend(split_cell_to_values(v))
-    if not all_vals:
-        return EMPTY_TOKEN
-    uniq = sorted(set(all_vals))
-    return MULTI_JOIN.join(uniq)
-
-def count_unique(series: pd.Series) -> int:
-    all_vals = []
-    for v in series:
-        all_vals.extend(split_cell_to_values(v))
-    return len(set(all_vals))
-
+def concat_unique(series):
+    vals = []
+    for v in series: vals.extend(split_cell_to_values(v))
+    return MULTI_JOIN.join(sorted(set(vals))) if vals else EMPTY_TOKEN
 
 @st.cache_data(show_spinner=False)
-def load_excel(uploaded_file, sheet_name):
-    return pd.read_excel(uploaded_file, sheet_name=sheet_name)
+def load_data(file):
+    if file.name.endswith('csv'):
+        return pd.read_csv(file)
+    return pd.read_excel(file)
 
-@st.cache_data(show_spinner=False)
-def build_records(df: pd.DataFrame, tier1_col: str, diefam_col: str, latest_col: str, feature_cols: list[str]):
-    # defensive: ensure unique id_vars (pandas melt pops them)
-    id_vars = [tier1_col, diefam_col, latest_col]
-    if len(set(id_vars)) != 3:
-        raise ValueError("Mapping error: Tier1 / DieFamily / LatestCompany must be 3 DIFFERENT columns.")
+def get_pivoted_data(df, tier1, diefam, latest, features):
+    """
+    Creates two views of the data for a specific Die Family.
+    """
+    # Filter columns
+    cols = [tier1, diefam, latest] + features
+    sub_df = df[cols].copy()
+    
+    # Clean text to ensure grouping works
+    sub_df[latest] = sub_df[latest].fillna("Unknown").astype(str).str.strip()
+    
+    # Aggregate duplicate rows (same supplier, same die family)
+    # We group by Supplier and DieFamily, and aggregate features
+    grouped = sub_df.groupby([tier1, diefam, latest], as_index=False)[features].agg(concat_unique)
+    
+    return grouped
 
-    # also ensure selected feature cols don't overlap with id_vars
-    feature_cols = [c for c in feature_cols if c not in id_vars]
+# ==========================================
+# 3. THE CUSTOM "CANVAS" UI (HTML/JS)
+# ==========================================
+# This HTML creates a sticky-header comparison table
+CUSTOM_UI_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+    :root { --primary: #2980b9; --bg: #ffffff; --header-bg: #f8f9fa; --border: #ddd; }
+    body { font-family: 'Segoe UI', sans-serif; margin: 0; padding: 10px; background: var(--bg); }
+    
+    /* SCROLL CONTAINER */
+    .table-container { overflow-x: auto; max-height: 800px; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+    
+    table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 800px; }
+    
+    /* HEADERS */
+    th { background: var(--header-bg); color: #444; font-weight: 600; padding: 12px 15px; text-align: left; border-bottom: 2px solid var(--primary); position: sticky; top: 0; z-index: 10; }
+    
+    /* FIRST COLUMN STICKY (Features) */
+    th:first-child, td:first-child { position: sticky; left: 0; background: var(--header-bg); z-index: 11; border-right: 2px solid #eee; font-weight: bold; min-width: 150px; }
+    th:first-child { z-index: 20; } /* Top-left corner */
 
-    long_df = df.melt(
-        id_vars=id_vars,
-        value_vars=feature_cols,
-        var_name="FeatureName",
-        value_name="FeatureValue",
+    td { padding: 10px 15px; border-bottom: 1px solid #eee; color: #555; vertical-align: top; font-size: 14px; min-width: 120px; }
+    
+    /* HOVER EFFECTS */
+    tbody tr:hover td { background-color: #f1f8ff; }
+    tbody tr:hover td:first-child { background-color: #e3f2fd; }
+    
+    .empty { color: #ccc; font-style: italic; }
+    .val-pill { display: inline-block; background: #eef; padding: 2px 6px; border-radius: 4px; margin: 2px; border: 1px solid #dde; }
+</style>
+</head>
+<body>
+    <div id="root"></div>
+    <script>
+        const data = window.__APP_DATA__;
+        
+        function renderTable() {
+            const root = document.getElementById('root');
+            if (!data || !data.matrix) { root.innerHTML = "No data available"; return; }
+            
+            const suppliers = data.suppliers; // Array of strings
+            const features = data.features;   // Object { featureName: { supplierName: value } }
+            
+            let html = '<div class="table-container"><table>';
+            
+            // HEADERS (Suppliers)
+            html += '<thead><tr><th>Feature / Spec</th>';
+            suppliers.forEach(s => {
+                html += `<th>${s}</th>`;
+            });
+            html += '</tr></thead>';
+            
+            // BODY (Rows = Features)
+            html += 'tbody';
+            for (const [featName, supMap] of Object.entries(features)) {
+                html += `<tr><td>${featName}</td>`;
+                suppliers.forEach(s => {
+                    let val = supMap[s] || "-";
+                    let display = val === "-" ? '<span class="empty">-</span>' : val;
+                    // Check if value contains commas (multiple values), wrap them
+                    if (val.includes(',') && val !== "-") {
+                        display = val.split(',').map(v => `<span class="val-pill">${v.trim()}</span>`).join('');
+                    }
+                    html += `<td>${display}</td>`;
+                });
+                html += '</tr>';
+            }
+            html += '</tbody></table></div>';
+            root.innerHTML = html;
+        }
+        renderTable();
+    </script>
+</body>
+</html>
+"""
+
+def render_custom_html(matrix_data, suppliers_list):
+    """Injects data into the HTML string and renders it"""
+    app_data = {"suppliers": suppliers_list, "features": matrix_data}
+    json_str = json.dumps(app_data)
+    b64 = base64.b64encode(json_str.encode("utf-8")).decode("ascii")
+    
+    html = CUSTOM_UI_TEMPLATE.replace(
+        "window.__APP_DATA__;", 
+        f"window.__APP_DATA__ = JSON.parse(atob('{b64}'));"
     )
-    long_df["FeatureValue"] = long_df["FeatureValue"].replace("", np.nan)
+    st.components.v1.html(html, height=600, scrolling=False)
 
-    agg_val = (
-        long_df.groupby([tier1_col, diefam_col, latest_col, "FeatureName"])["FeatureValue"]
-        .agg(concat_unique)
-        .reset_index()
-    )
-    agg_cnt = (
-        long_df.groupby([tier1_col, diefam_col, latest_col, "FeatureName"])["FeatureValue"]
-        .agg(count_unique)
-        .reset_index()
-        .rename(columns={"FeatureValue": "Count"})
-    )
-    merged = agg_val.merge(agg_cnt, on=[tier1_col, diefam_col, latest_col, "FeatureName"], how="left")
+# ==========================================
+# 4. MAIN APP
+# ==========================================
 
-    companies = sorted([c for c in merged[latest_col].dropna().astype(str).unique().tolist() if c.strip()])
-
-    records = []
-    for (t, d, f), g in merged.groupby([tier1_col, diefam_col, "FeatureName"], dropna=False):
-        t = "" if pd.isna(t) else str(t)
-        d = "" if pd.isna(d) else str(d)
-        f = "" if pd.isna(f) else str(f)
-
-        values = {c: EMPTY_TOKEN for c in companies}
-        counts = {c: 0 for c in companies}
-
-        for _, r in g.iterrows():
-            comp = "" if pd.isna(r[latest_col]) else str(r[latest_col]).strip()
-            if not comp:
-                continue
-            v = r["FeatureValue"]
-            values[comp] = str(v).strip() if pd.notna(v) and str(v).strip() else EMPTY_TOKEN
-            counts[comp] = int(r["Count"]) if pd.notna(r["Count"]) else 0
-
-        records.append({"tier1": t, "dieFamily": d, "feature": f, "values": values, "counts": counts})
-
-    records.sort(key=lambda x: (x["tier1"], x["dieFamily"], x["feature"]))
-    return companies, records
-
-
-def load_ui_html() -> str:
-    if not UI_HTML_PATH.exists():
-        raise FileNotFoundError(f"Missing ui.html at {UI_HTML_PATH}")
-    return UI_HTML_PATH.read_text(encoding="utf-8")
-
-def inject_data_into_html(html: str, app_data: dict) -> str:
-    raw = json.dumps(app_data, ensure_ascii=False).encode("utf-8")
-    b64 = base64.b64encode(raw).decode("ascii")
-    inject = f"""<script>
-window.__APP_DATA__ = JSON.parse(atob("{b64}"));
-</script>"""
-    if "</head>" in html:
-        return html.replace("</head>", inject + "\n</head>", 1)
-    return inject + "\n" + html
-
-
-st.set_page_config(page_title=APP_TITLE, layout="wide")
 st.title(APP_TITLE)
-st.caption("Single-root Option A: Streamlit backend + embedded website-style UI (no folders, no npm build).")
+st.caption("Compare electronic components: Switch between 'Matrix View' (Feature comparison) and 'List View' (Supplier catalogs).")
 
-uploaded = st.file_uploader("Upload Excel", type=["xlsx", "xls"])
-if not uploaded:
-    st.info("Upload your Excel to start.")
-    st.stop()
-
-xls = pd.ExcelFile(uploaded)
-sheet = st.selectbox("Sheet", options=xls.sheet_names, index=0)
-df = load_excel(uploaded, sheet)
-
-auto_tier1 = find_col(df, TIER1_COL_CANDIDATES) or df.columns[0]
-auto_die   = find_col(df, DIEFAM_CANDIDATES) or df.columns[0]
-auto_latest= find_col(df, LATEST_COMPANY_CANDIDATES) or df.columns[0]
-
+# --- 4.1 Input Section ---
 with st.sidebar:
-    st.header("Mapping")
-    tier1_col = st.selectbox("Tier-1 Supplier column", options=df.columns.tolist(), index=df.columns.get_loc(auto_tier1))
-    diefam_col = st.selectbox("DieFamily column", options=df.columns.tolist(), index=df.columns.get_loc(auto_die))
-    latest_col = st.selectbox("LatestCompanyName column", options=df.columns.tolist(), index=df.columns.get_loc(auto_latest))
+    st.header("1. Upload Data")
+    uploaded = st.file_uploader("Upload CSV or Excel", type=["xlsx", "xls", "csv"])
+    
+    if uploaded:
+        df = load_data(uploaded)
+        
+        st.divider()
+        st.header("2. Map Columns")
+        
+        c_tier1 = st.selectbox("Tier 1 (Root)", df.columns, index=df.columns.get_loc(find_col(df, TIER1_CANDIDATES)))
+        c_die   = st.selectbox("Die Family (Grouping)", df.columns, index=df.columns.get_loc(find_col(df, DIEFAM_CANDIDATES)))
+        c_latest= st.selectbox("Supplier Name", df.columns, index=df.columns.get_loc(find_col(df, LATEST_CANDIDATES)))
+        
+        # ID columns to exclude from features
+        id_cols = {c_tier1, c_die, c_latest}
+        feature_candidates = [c for c in df.columns if c not in id_cols]
+        
+        c_features = st.multiselect("Select Features to Compare", feature_candidates, default=feature_candidates[:8])
 
-    # mapping validation (prevents pandas melt KeyError)
-    chosen = [tier1_col, diefam_col, latest_col]
-    if len(set(chosen)) != 3:
-        st.error("Mapping error: Tier1 / DieFamily / LatestCompany must be 3 different columns.")
-        st.stop()
-
-    st.divider()
-    st.subheader("Features")
-    non_feature = build_non_feature_set(df)
-    non_feature.update([tier1_col, diefam_col, latest_col])
-    auto_features = [c for c in df.columns if c not in non_feature]
-
-    manual = st.checkbox("Select features manually", value=False)
-    if manual:
-        feature_cols = st.multiselect("Feature columns", options=auto_features, default=auto_features)
-    else:
-        feature_cols = auto_features
-
-    # Safety: remove overlap if user manually picked id vars
-    feature_cols = [c for c in feature_cols if c not in chosen]
-
-    st.divider()
-    st.subheader("Performance")
-    max_records = st.number_input("Max records (safety cap)", min_value=1000, max_value=200000, value=60000, step=1000)
-
-if not feature_cols:
-    st.error("No feature columns selected.")
+if not uploaded:
+    st.info("👋 Upload a file to begin.")
     st.stop()
 
-# Optional: show columns (helps debugging on Cloud)
-with st.expander("Debug: show detected columns"):
-    st.write("Columns:", list(df.columns))
-    st.write("Tier1:", tier1_col)
-    st.write("DieFamily:", diefam_col)
-    st.write("LatestCompany:", latest_col)
-    st.write("Feature columns:", len(feature_cols))
-
-try:
-    with st.spinner("Aggregating features for the UI..."):
-        companies, records = build_records(df, tier1_col, diefam_col, latest_col, feature_cols)
-except Exception as e:
-    st.error("Failed while building the view. Check your mapping and sheet.")
-    st.exception(e)
+if not c_features:
+    st.warning("Please select at least one feature in the sidebar.")
     st.stop()
 
-if len(records) > int(max_records):
-    records = records[: int(max_records)]
-    st.warning(f"Records truncated to {max_records} for responsiveness. Increase the cap in the sidebar if needed.")
+# --- 4.2 Data Processing ---
 
-app_data = {
-    "meta": {
-        "fileName": getattr(uploaded, "name", ""),
-        "tier1Col": str(tier1_col),
-        "diefamCol": str(diefam_col),
-        "latestCol": str(latest_col),
-        "featureCount": int(len(feature_cols)),
-        "recordCount": int(len(records)),
-    },
-    "companies": companies,
-    "records": records,
-}
+# 1. Get List of Unique Die Families to filter by
+unique_families = df[c_die].dropna().unique().tolist()
+unique_families.sort()
 
-ui_html = load_ui_html()
-html_with_data = inject_data_into_html(ui_html, app_data)
-st.components.v1.html(html_with_data, height=980, scrolling=True)
+# Selector at the top
+st.markdown("### 🔍 Select Component Group")
+selected_family = st.selectbox("Select a Die Family to analyze:", unique_families)
+
+# Filter Data
+filtered_df = get_pivoted_data(df, c_tier1, c_die, c_latest, c_features)
+filtered_df = filtered_df[filtered_df[c_die] == selected_family]
+
+if filtered_df.empty:
+    st.warning("No data found for this selection.")
+    st.stop()
+
+# --- 4.3 THE DUAL VIEWS ---
+
+tab1, tab2, tab3 = st.tabs(["📊 Matrix View (Features x Supplier)", "📋 Catalog View (Supplier x Features)", "🎨 Canvas View (Custom UI)"])
+
+# VIEW 1: MATRIX (Rows=Features, Cols=Suppliers)
+with tab1:
+    st.markdown("#### Feature Comparison Matrix")
+    st.caption("Best for comparing specific specs across different suppliers.")
+    
+    # Pivot logic: Index=Feature, Columns=Supplier, Values=Value
+    # We first melt
+    melted = filtered_df.melt(id_vars=[c_latest], value_vars=c_features, var_name="Feature", value_name="Value")
+    
+    # Then pivot
+    matrix_df = melted.pivot(index="Feature", columns=c_latest, values="Value")
+    matrix_df = matrix_df.fillna("-")
+    
+    st.dataframe(matrix_df, use_container_width=True, height=500)
+
+# VIEW 2: LIST (Rows=Suppliers, Cols=Features)
+with tab2:
+    st.markdown("#### Supplier Catalog List")
+    st.caption("Best for viewing the full specification sheet for each supplier.")
+    
+    # This is essentially the filtered_df, just cleaned up
+    display_df = filtered_df.set_index(c_latest)[c_features].fillna("-")
+    
+    st.dataframe(display_df, use_container_width=True)
+
+# VIEW 3: CANVAS (The Custom HTML UI)
+with tab3:
+    st.markdown("#### Visual Comparison Board")
+    
+    # Prepare data for JS
+    # 1. Get list of suppliers (columns)
+    suppliers_list = sorted(filtered_df[c_latest].unique().tolist())
+    
+    # 2. Build feature map: { "Voltage": { "Nexperia": "45V", "OnSemi": "45V" } }
+    feature_map = {}
+    
+    # Iterate through features
+    for feat in c_features:
+        feature_map[feat] = {}
+        # Iterate through rows in the filtered DF
+        for _, row in filtered_df.iterrows():
+            sup = row[c_latest]
+            val = row[feat]
+            feature_map[feat][sup] = str(val) if pd.notna(val) else "-"
+
+    render_custom_html(feature_map, suppliers_list)
