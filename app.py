@@ -91,8 +91,9 @@ def load_data(file):
     clean_cols = []
     for c in df.columns:
         c_str = str(c).strip()
-        # Remove pattern
-        c_str = re.sub(r'\', '', c_str)
+        # FIX: Used double quotes for the regex pattern to prevent syntax errors
+        c_str = re.sub(r"\", "", c_str)
+        
         # Fix known typos
         if "Supplier tire" in c_str: c_str = "Tier 1"
         if "Teir" in c_str: c_str = "Tier 1"
@@ -133,8 +134,14 @@ with st.sidebar:
         st.header("⚙️ Configuration")
         
         # Smart Auto-Selection of Columns
-        idx_die = next((i for i, c in enumerate(cols) if "Die Family" in c), 0)
-        idx_sup = next((i for i, c in enumerate(cols) if "Latest" in c or "Company" in c), 0)
+        # Tries to find 'Die Family' or defaults to the 2nd column
+        idx_die = next((i for i, c in enumerate(cols) if "Die Family" in c), 1)
+        # Tries to find 'Latest' or 'Company' or defaults to 3rd column
+        idx_sup = next((i for i, c in enumerate(cols) if "Latest" in c or "Company" in c), 2)
+        
+        # Safety check to keep indices in bounds
+        if idx_die >= len(cols): idx_die = 0
+        if idx_sup >= len(cols): idx_sup = 0
         
         c_die = st.selectbox("Grouping Column (e.g. Die Family)", cols, index=idx_die)
         c_supplier = st.selectbox("Supplier Column", cols, index=idx_sup)
@@ -183,7 +190,11 @@ kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 num_suppliers = subset[c_supplier].nunique()
 num_features = len(c_features)
 total_records = len(subset)
-top_supplier = subset[c_supplier].mode()[0] if not subset.empty else "N/A"
+# Calculate top supplier safely
+if not subset.empty:
+    top_supplier = subset[c_supplier].mode()[0]
+else:
+    top_supplier = "N/A"
 
 kpi1.metric("Active Suppliers", num_suppliers)
 kpi2.metric("Features Tracked", num_features)
