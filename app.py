@@ -231,11 +231,11 @@ with tab_matrix:
     st.caption(f"Comparing **{len(c_features)} features** across **{num_suppliers} suppliers**. (Suppliers are Columns)")
     
     st.dataframe(
-        view_matrix, 
-        use_container_width=True, 
+        view_matrix,
+        use_container_width=True,
         height=600,
         column_config={
-            col: st.column_config.TextColumn(wrap_text=True) 
+            col: st.column_config.TextColumn(col)
             for col in view_matrix.columns
         }
     )
