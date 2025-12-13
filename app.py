@@ -18,6 +18,13 @@ st.markdown("""
     .stApp {
         background-color: #f8f9fa;
         font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        font-size: 15px;
+    }
+
+    /* Constrain the main container so the UI doesn't feel zoomed-in */
+    .block-container {
+        max-width: 1200px;
+        padding: 1.5rem 2rem 4rem 2rem;
     }
     
     /* Header Styling */
@@ -27,6 +34,7 @@ st.markdown("""
         letter-spacing: -1px;
         padding-bottom: 10px;
         border-bottom: 2px solid #e5e7eb;
+        margin-bottom: 0.5rem;
     }
     
     h3 {
@@ -38,7 +46,7 @@ st.markdown("""
     [data-testid="stMetric"] {
         background-color: #ffffff;
         border: 1px solid #e5e7eb;
-        padding: 15px;
+        padding: 14px;
         border-radius: 8px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
@@ -51,7 +59,7 @@ st.markdown("""
         background-color: transparent;
     }
     .stTabs [data-baseweb="tab"] {
-        height: 45px;
+        height: 42px;
         border-radius: 6px;
         background-color: #ffffff;
         border: 1px solid #e5e7eb;
@@ -70,6 +78,15 @@ st.markdown("""
         border-radius: 8px;
         background-color: white;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    }
+
+    /* Section container */
+    .card-container {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 18px;
+        box-shadow: 0 6px 12px rgba(0,0,0,0.04);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -166,12 +183,41 @@ st.title("💠 Component Analytics")
 
 if not uploaded_file:
     st.markdown("""
-    <div style='background-color: white; padding: 40px; border-radius: 10px; text-align: center; border: 2px dashed #e5e7eb;'>
+    <div class='card-container' style='text-align: center'>
         <h3 style='margin:0'>👋 Welcome!</h3>
-        <p style='color: #6b7280'>Upload your component dataset to begin the analysis.</p>
+        <p style='color: #6b7280'>Upload your component dataset to configure suppliers, families, and feature comparisons.</p>
+        <p style='color: #9ca3af; font-size: 14px;'>Works with CSV or Excel files. Bad rows are skipped automatically.</p>
     </div>
     """, unsafe_allow_html=True)
     st.stop()
+
+# Quick glance at the raw file to help users verify columns
+st.markdown("#### Dataset overview")
+base_rows, base_cols = df.shape
+preview_rows = min(5, base_rows)
+
+info_col, preview_col = st.columns([1, 2])
+with info_col:
+    st.markdown(
+        f"""
+        <div class='card-container'>
+            <div style='font-weight:600; color:#111827; margin-bottom: 4px;'>Source Summary</div>
+            <div style='color:#4b5563;'>
+                • <strong>{base_rows}</strong> rows loaded<br>
+                • <strong>{base_cols}</strong> columns detected<br>
+                • Grouping: <em>{c_die}</em><br>
+                • Supplier: <em>{c_supplier}</em>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+with preview_col:
+    st.markdown("<div class='card-container' style='margin-bottom: 8px;'>", unsafe_allow_html=True)
+    st.caption("First few rows (sanity check)")
+    st.dataframe(df.head(preview_rows), use_container_width=True, height=220)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 if not c_features:
     st.error("Please select at least one feature from the sidebar.")
@@ -192,6 +238,11 @@ subset = df[df[c_die].astype(str) == selected_group]
 
 # 2. Quick Stats (KPIs)
 st.markdown("---")
+kpi_header = st.columns([1, 1])
+with kpi_header[0]:
+    st.markdown("#### Key highlights")
+with kpi_header[1]:
+    st.caption("Metrics update as you switch component families.")
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 
 num_suppliers = subset[c_supplier].nunique()
@@ -229,11 +280,11 @@ tab_matrix, tab_catalog = st.tabs(["📊 Compare View (Matrix)", "📋 Catalog V
 with tab_matrix:
     st.markdown("#### ⚔️ Head-to-Head Comparison")
     st.caption(f"Comparing **{len(c_features)} features** across **{num_suppliers} suppliers**. (Suppliers are Columns)")
-    
+
     st.dataframe(
         view_matrix,
         use_container_width=True,
-        height=600,
+        height=420,
         column_config={
             col: st.column_config.TextColumn(col)
             for col in view_matrix.columns
@@ -243,9 +294,9 @@ with tab_matrix:
 with tab_catalog:
     st.markdown("#### 📚 Supplier Catalog")
     st.caption("Detailed breakdown per supplier. (Suppliers are Rows)")
-    
+
     st.dataframe(
-        view_catalog, 
-        use_container_width=True, 
-        height=600
+        view_catalog,
+        use_container_width=True,
+        height=420
     )
