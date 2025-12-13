@@ -344,21 +344,6 @@ def aggregate_data(df: pd.DataFrame, group_col: str, pivot_col: str, features: l
     return grouped
 
 
-def compute_feature_coverage(agg_df: pd.DataFrame, supplier_col: str, features: list[str]) -> pd.DataFrame:
-    num_suppliers = int(agg_df[supplier_col].nunique()) if supplier_col in agg_df.columns else 0
-    rows = []
-    for f in features:
-        s = agg_df[f].astype(str).str.strip()
-        non_empty_mask = s.ne("")
-        rows.append({
-            "Feature": f,
-            "UniqueValues": int(s[non_empty_mask].nunique()),
-            "SuppliersWithValue": int(non_empty_mask.sum()),
-            "SuppliersTotal": num_suppliers,
-        })
-    out = pd.DataFrame(rows).sort_values(["UniqueValues", "SuppliersWithValue"], ascending=False)
-    return out
-
 
 def _esc(x) -> str:
     return html.escape("" if x is None else str(x))
@@ -458,6 +443,88 @@ def build_compare_html(
     return html_table, compare_df
 
 
+
+
+def build_catalog_html(
+    data_by_supplier: dict,
+    suppliers: list[str],
+    features: list[str],
+    *,
+    hide_empty_columns: bool,
+    show_only_diff_columns: bool,
+    strong_diff_threshold: int = 2
+) -> tuple[str, pd.DataFrame]:
+    """Supplier Catalog as a wide, website-like table.
+    Rows = suppliers, Columns = features (same structure as input headers).
+    """
+    # Base df for downloads
+    catalog_df = pd.DataFrame({"Supplier": suppliers})
+    for f in features:
+        catalog_df[f] = [data_by_supplier.get(s, {}).get(f, "") for s in suppliers]
+
+    # Column stats for filtering + styling
+    col_flags = {}
+    for f in features:
+        vals = []
+        any_non_empty = False
+        for s in suppliers:
+            v = str(data_by_supplier.get(s, {}).get(f, "")).strip()
+            if v != "":
+                any_non_empty = True
+                vals.append(v)
+        distinct = len(set(vals))
+        is_diff = distinct >= 2
+        col_flags[f] = {"any": any_non_empty, "diff": is_diff, "distinct": distinct}
+
+    visible_features = list(features)
+    if hide_empty_columns:
+        visible_features = [f for f in visible_features if col_flags.get(f, {}).get("any", False)]
+    if show_only_diff_columns:
+        visible_features = [f for f in visible_features if col_flags.get(f, {}).get("diff", False)]
+
+    # HTML header
+    thead = "<thead><tr>"
+    thead += "<th><span class='spec-chip'>Supplier</span></th>"
+    for f in visible_features:
+        thead += f"<th><span class='spec-chip'>{_esc(f)}</span></th>"
+    thead += "</tr></thead>"
+
+    # HTML body
+    rows_html = []
+    for s in suppliers:
+        tr = "<tr>"
+        tr += f"<td><div class='cell'><strong>{_esc(s)}</strong></div></td>"
+        for f in visible_features:
+            raw = str(data_by_supplier.get(s, {}).get(f, "")).strip()
+            if raw == "":
+                tr += "<td><div class='cell empty'>—</div></td>"
+            else:
+                cls = "cell"
+                if col_flags.get(f, {}).get("diff", False):
+                    cls += " diff"
+                    if col_flags.get(f, {}).get("distinct", 0) >= strong_diff_threshold:
+                        cls += " strong"
+                shown = _shorten(raw, 120)
+                tr += f"<td><div class='{cls}' title='{_esc(raw)}'>{_esc(shown)}</div></td>"
+        tr += "</tr>"
+        rows_html.append(tr)
+
+    tbody = "<tbody>" + "".join(rows_html) + "</tbody>"
+
+    html_table = f"""
+    <div class=\"spec-wrap\">
+      <div class=\"spec-scroll\">
+        <table class=\"spec-table\">
+          {thead}
+          {tbody}
+        </table>
+      </div>
+    </div>
+    """
+
+    # Return df with only visible features for the view (downloads can use this or full)
+    view_df = catalog_df[["Supplier"] + visible_features] if visible_features else catalog_df[["Supplier"]]
+    return html_table, view_df
 def build_supplier_cards_html(
     suppliers_ordered: list[str],
     supplier_summary: dict,
@@ -535,12 +602,14 @@ with st.sidebar:
 
         remaining_cols = [c for c in cols if c not in [c_die, c_supplier]]
 
-        st.caption("Select features to analyze:")
-        c_features = st.multiselect(
-            "Features",
-            remaining_cols,
-            default=remaining_cols[:6] if len(remaining_cols) > 0 else None
-        )
+        # Use ALL remaining columns as features (Compare + Catalog).
+        c_features = list(remaining_cols)
+
+        with st.expander("Feature columns (using ALL by default)", expanded=False):
+            st.caption("These columns become your feature headers. You can optionally exclude a few.")
+            exclude_cols = st.multiselect("Exclude columns", remaining_cols, default=[])
+            if exclude_cols:
+                c_features = [c for c in remaining_cols if c not in exclude_cols]
         st.markdown("</div>", unsafe_allow_html=True)
     else:
         st.info("Awaiting file upload…")
@@ -660,41 +729,6 @@ if agg_df.empty:
     st.warning("No data available for this selection.")
     st.stop()
 
-# coverage chart input
-coverage_df = compute_feature_coverage(agg_df, c_supplier, c_features)
-
-# ---- Altair coverage chart (after KPIs) ----
-st.markdown("<div class='card hover-lift' style='margin-top: 1rem;'>", unsafe_allow_html=True)
-st.markdown("#### Supplier feature coverage")
-st.caption("Bars show how many **unique non-empty values** exist per feature across suppliers (post-aggregation).")
-
-if HAS_ALTAIR:
-    hover = alt.selection_point(on="mouseover", fields=["Feature"], nearest=True, empty=False)
-    chart = (
-        alt.Chart(coverage_df)
-        .mark_bar()
-        .encode(
-            x=alt.X("Feature:N", sort="-y", axis=alt.Axis(title=None, labelAngle=-25, labelLimit=220)),
-            y=alt.Y("UniqueValues:Q", title="Unique non-empty values"),
-            tooltip=[
-                alt.Tooltip("Feature:N"),
-                alt.Tooltip("UniqueValues:Q", title="Unique values"),
-                alt.Tooltip("SuppliersWithValue:Q", title="Suppliers with value"),
-                alt.Tooltip("SuppliersTotal:Q", title="Total suppliers"),
-            ],
-            opacity=alt.condition(hover, alt.value(1.0), alt.value(0.75)),
-        )
-        .add_params(hover)
-        .properties(height=280)
-        .interactive()
-    )
-    st.altair_chart(chart, use_container_width=True)
-else:
-    st.info("Altair is not available in this environment. Showing a simple bar chart instead.")
-    st.bar_chart(coverage_df.set_index("Feature")["UniqueValues"])
-
-st.markdown("</div>", unsafe_allow_html=True)
-
 # =========================================================
 # Build website-like maps for Compare + Catalog
 # =========================================================
@@ -740,14 +774,18 @@ tab_matrix, tab_catalog = st.tabs(["📊 Compare View", "📋 Catalog View"])
 with tab_matrix:
     st.markdown("<div class='card hover-lift'>", unsafe_allow_html=True)
     st.markdown("#### ⚔️ Supplier Comparison Builder")
-    st.caption("Pick suppliers + features. The compare table is sticky, highlights differences, and can show only differences.")
+    st.caption("Pick suppliers. The table uses **all features** (you can search features if needed).")
 
     # Controls
     ctl1, ctl2, ctl3 = st.columns([1.6, 1.4, 1], gap="large")
 
-    # Default: top 4 suppliers by record count
+    # Default suppliers: top by records (or a selection pushed from Catalog view)
     top_by_records = sorted(suppliers_all, key=lambda s: supplier_summary.get(s, {}).get("records", 0), reverse=True)
     default_compare = top_by_records[:4] if len(top_by_records) >= 2 else top_by_records
+    if "compare_suppliers" in st.session_state and isinstance(st.session_state["compare_suppliers"], list):
+        pushed = [s for s in st.session_state["compare_suppliers"] if s in suppliers_all]
+        if len(pushed) >= 2:
+            default_compare = pushed
 
     with ctl1:
         compare_suppliers = st.multiselect(
@@ -756,20 +794,24 @@ with tab_matrix:
             default=default_compare,
         )
     with ctl2:
-        compare_features = st.multiselect(
-            "Features to include",
-            c_features,
-            default=c_features,
+        feature_q = st.text_input(
+            "Search features (optional)",
+            value="",
+            placeholder="Type part of a feature name…"
         )
     with ctl3:
         show_only_diff = st.toggle("Only differences", value=False)
         hide_empty_rows = st.toggle("Hide empty rows", value=True)
 
+    compare_features = list(c_features)
+    if feature_q.strip():
+        ql = feature_q.strip().lower()
+        compare_features = [f for f in c_features if ql in str(f).lower()]
     if len(compare_suppliers) < 2:
         st.info("Select at least **2 suppliers** to compare.")
         st.markdown("</div>", unsafe_allow_html=True)
     elif len(compare_features) == 0:
-        st.info("Select at least **1 feature**.")
+        st.info("No features match your search filter.")
         st.markdown("</div>", unsafe_allow_html=True)
     else:
         # Build compare HTML
@@ -802,8 +844,8 @@ with tab_matrix:
 
 with tab_catalog:
     st.markdown("<div class='card hover-lift'>", unsafe_allow_html=True)
-    st.markdown("#### 📚 Supplier Catalog")
-    st.caption("Browse suppliers like a real catalog: search, sort, and open details per supplier.")
+    st.markdown("#### 🧾 Supplier Catalog (Table)")
+    st.caption("Website-like catalog table: **rows = suppliers**, **columns = features** (same structure as your input headers).")
 
     # Catalog controls
     c1, c2, c3 = st.columns([1.6, 1.2, 1.2], gap="large")
@@ -811,18 +853,26 @@ with tab_catalog:
         q = st.text_input("Search supplier", value="", placeholder="Type a supplier name…")
     with c2:
         sort_by = st.selectbox(
-            "Sort by",
+            "Sort suppliers",
             ["Coverage (desc)", "Records (desc)", "Name (A→Z)", "Name (Z→A)"],
             index=0
         )
     with c3:
         filter_feature = st.selectbox(
-            "Filter: supplier must have value for feature",
+            "Supplier must have value for",
             ["(no filter)"] + list(c_features),
             index=0
         )
 
-    # Filter suppliers
+    c4, c5, c6 = st.columns([1.6, 1, 1], gap="large")
+    with c4:
+        feature_q = st.text_input("Search columns (optional)", value="", placeholder="Type part of a feature/column name…")
+    with c5:
+        show_only_diff_cols = st.toggle("Only different columns", value=False)
+    with c6:
+        hide_empty_cols = st.toggle("Hide all-empty columns", value=False)
+
+    # Filter suppliers (search + optional feature filter)
     filtered = suppliers_all
     if q.strip():
         ql = q.strip().lower()
@@ -845,38 +895,53 @@ with tab_catalog:
     else:
         filtered = sorted(filtered, key=lambda s: s.lower(), reverse=True)
 
+    # Filter visible columns (optional search)
+    visible_features = list(c_features)
+    if feature_q.strip():
+        qf = feature_q.strip().lower()
+        visible_features = [f for f in visible_features if qf in str(f).lower()]
+
+    # Quick compare selector (pushes selection into Compare tab defaults)
+    with st.expander("Quick compare (send suppliers to Compare View)", expanded=False):
+        default_pick = filtered[:4] if len(filtered) >= 4 else filtered
+        pick = st.multiselect("Pick 2+ suppliers", filtered, default=default_pick)
+        if st.button("Use these suppliers in Compare View"):
+            if len(pick) >= 2:
+                st.session_state["compare_suppliers"] = pick
+                st.success("Applied. Open the **Compare View** tab to see them.")
+            else:
+                st.info("Pick at least 2 suppliers.")
+
     if not filtered:
         st.info("No suppliers match your filters.")
         st.markdown("</div>", unsafe_allow_html=True)
+    elif len(visible_features) == 0:
+        st.info("No columns match your column search filter.")
+        st.markdown("</div>", unsafe_allow_html=True)
     else:
-        # Render the card grid header area (HTML)
-        st.markdown(build_supplier_cards_html(filtered, supplier_summary, supplier_feature_map, c_features), unsafe_allow_html=True)
+        # Build website-like catalog table
+        html_table, catalog_view_df = build_catalog_html(
+            supplier_feature_map,
+            filtered,
+            visible_features,
+            hide_empty_columns=hide_empty_cols,
+            show_only_diff_columns=show_only_diff_cols,
+            strong_diff_threshold=2
+        )
 
-        # Details expanders (Streamlit controls) — “site-like”: cards + expand details
-        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='note-muted'>Tip: use horizontal scroll for many columns. Hover any cell to see the full value.</div>",
+            unsafe_allow_html=True
+        )
+        st.markdown(html_table, unsafe_allow_html=True)
 
-        for sup in filtered:
-            meta = supplier_summary.get(sup, {})
-            coverage_pct = meta.get("coverage_pct", 0)
-
-            with st.expander(f"{sup} — {coverage_pct:.0f}% coverage", expanded=False):
-                # Build feature/value table (HTML)
-                rows = []
-                for f in c_features:
-                    val = str(supplier_feature_map.get(sup, {}).get(f, "")).strip()
-                    if val == "":
-                        val_disp = "<span style='color:#94a3b8;'>—</span>"
-                    else:
-                        val_disp = _esc(val)
-                    rows.append(f"<tr><td>{_esc(f)}</td><td>{val_disp}</td></tr>")
-
-                table_html = f"""
-                <table class="kv-table">
-                    <tbody>
-                        {''.join(rows)}
-                    </tbody>
-                </table>
-                """
-                st.markdown(table_html, unsafe_allow_html=True)
+        # Download (current view)
+        csv_bytes = catalog_view_df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Download catalog (CSV — current view)",
+            data=csv_bytes,
+            file_name=f"catalog_{selected_group}.csv".replace(" ", "_"),
+            mime="text/csv",
+        )
 
         st.markdown("</div>", unsafe_allow_html=True)
