@@ -12,6 +12,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Custom CSS for a clean, professional look
 st.markdown("""
 <style>
     /* Main Background & Fonts */
@@ -95,7 +96,8 @@ def load_data(file):
         # 1. Remove patterns safely
         c_str = re.sub(r"\", "", c_str)
         
-        # 2. Remove double quotes and backslashes safely
+        # 2. Remove double quotes and backslashes SAFELY
+        # (This replaces the line that was crashing your code)
         c_str = c_str.replace('"', '').replace('\\', '').strip()
         
         # 3. Fix known typos
