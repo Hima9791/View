@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import re
 
 # ==========================================
 # 1. CONFIGURATION & STYLING
@@ -93,12 +92,11 @@ def load_data(file):
     for c in df.columns:
         c_str = str(c).strip()
         
-        # 1. Remove patterns safely
-        c_str = re.sub(r"\", "", c_str)
-        
-        # 2. Remove double quotes and backslashes SAFELY
-        # THIS IS THE FIX: We use .replace() instead of regex to avoid the SyntaxError
-        c_str = c_str.replace('"', '').replace('\\', '').strip()
+        # 1. Remove backslashes explicitly (avoid problematic regex patterns)
+        c_str = c_str.replace('\\', '')
+
+        # 2. Remove double quotes
+        c_str = c_str.replace('"', '').strip()
         
         # 3. Fix known typos
         if "Supplier tire" in c_str: c_str = "Tier 1"
