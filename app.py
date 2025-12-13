@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import html
 
 # Altair is commonly available via Streamlit installs; if not, we gracefully fall back.
 try:
@@ -24,9 +25,6 @@ st.set_page_config(
 st.markdown(
     """
 <style>
-/* -----------------------------
-   Design tokens (subtle, corporate)
------------------------------- */
 :root{
     --bg0: #f8fafc;
     --bg1: #eef2ff;
@@ -41,6 +39,12 @@ st.markdown(
     --shadow: 0 10px 22px rgba(2, 6, 23, 0.06);
     --shadow2: 0 14px 30px rgba(2, 6, 23, 0.08);
     --radius: 14px;
+
+    --good: rgba(16,185,129,0.14);
+    --warn: rgba(245,158,11,0.16);
+    --diff: rgba(30,58,138,0.10);
+    --diff2: rgba(30,58,138,0.16);
+    --empty: rgba(15,23,42,0.03);
 }
 
 /* App background: subtle gradient */
@@ -58,18 +62,9 @@ st.markdown(
 }
 
 /* Headings */
-h1, h2, h3, h4 {
-    letter-spacing: -0.02em;
-}
-h1 {
-    color: var(--primary);
-    font-weight: 800;
-    margin-bottom: 0.15rem;
-}
-.small-subtitle{
-    color: var(--muted);
-    margin-top: -0.15rem;
-}
+h1, h2, h3, h4 { letter-spacing: -0.02em; }
+h1 { color: var(--primary); font-weight: 800; margin-bottom: 0.15rem; }
+.small-subtitle{ color: var(--muted); margin-top: -0.15rem; }
 
 /* Reusable card */
 .card {
@@ -96,9 +91,7 @@ section[data-testid="stSidebar"]{
 }
 section[data-testid="stSidebar"] .stMarkdown,
 section[data-testid="stSidebar"] label,
-section[data-testid="stSidebar"] p{
-    color: var(--text);
-}
+section[data-testid="stSidebar"] p{ color: var(--text); }
 
 /* Metric cards (hover + tighter) */
 [data-testid="stMetric"]{
@@ -144,15 +137,6 @@ section[data-testid="stSidebar"] p{
     border: 1px solid rgba(255,255,255,0.20);
 }
 
-/* Dataframe container */
-[data-testid="stDataFrame"]{
-    border: 1px solid var(--stroke);
-    border-radius: 12px;
-    background: var(--cardSolid);
-    box-shadow: 0 10px 22px rgba(2, 6, 23, 0.05);
-    overflow: hidden;
-}
-
 /* Expander polish */
 div[data-testid="stExpander"]{
     border-radius: 12px;
@@ -160,9 +144,163 @@ div[data-testid="stExpander"]{
     background: rgba(255,255,255,0.70);
 }
 
-/* Smaller spacing tweaks */
-hr{ border-color: rgba(15,23,42,0.08) !important; }
-div[data-testid="stCaptionContainer"] p { color: var(--muted); }
+/* ---------------------------------------
+   "Website-like" Compare Table (HTML)
+---------------------------------------- */
+.spec-wrap{
+    border: 1px solid var(--stroke);
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--cardSolid);
+    box-shadow: 0 10px 22px rgba(2,6,23,0.05);
+}
+.spec-scroll{
+    overflow: auto;
+    max-height: 560px;
+}
+.spec-table{
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 14px;
+}
+.spec-table thead th{
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: linear-gradient(180deg, rgba(30,58,138,0.10) 0%, rgba(255,255,255,0.98) 100%);
+    color: var(--text);
+    text-align: left;
+    padding: 12px 12px;
+    border-bottom: 1px solid var(--stroke);
+    white-space: nowrap;
+}
+.spec-table thead th:first-child{
+    left: 0;
+    z-index: 4;
+    position: sticky;
+    background: linear-gradient(180deg, rgba(30,58,138,0.14) 0%, rgba(255,255,255,0.98) 100%);
+}
+.spec-table tbody td{
+    padding: 11px 12px;
+    border-bottom: 1px solid rgba(15,23,42,0.06);
+    vertical-align: top;
+}
+.spec-table tbody tr:nth-child(even) td{
+    background: rgba(15,23,42,0.02);
+}
+.spec-table tbody td:first-child{
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: rgba(255,255,255,0.98);
+    border-right: 1px solid rgba(15,23,42,0.06);
+    min-width: 260px;
+    max-width: 360px;
+}
+.spec-chip{
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(15,23,42,0.10);
+    background: rgba(255,255,255,0.85);
+    color: #334155;
+    font-weight: 650;
+    font-size: 12px;
+    white-space: nowrap;
+}
+.cell{
+    line-height: 1.35;
+    color: #0f172a;
+    word-break: break-word;
+}
+.cell.empty{
+    color: #94a3b8;
+    background: var(--empty);
+    border-radius: 10px;
+    padding: 7px 9px;
+}
+.cell.diff{
+    background: var(--diff);
+    border: 1px solid rgba(30,58,138,0.12);
+    border-radius: 10px;
+    padding: 7px 9px;
+}
+.cell.diff.strong{
+    background: var(--diff2);
+}
+.note-muted{
+    color: var(--muted);
+    font-size: 13px;
+}
+
+/* ---------------------------------------
+   Supplier cards (Catalog view)
+---------------------------------------- */
+.supplier-grid{
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+@media (max-width: 900px){
+    .supplier-grid{ grid-template-columns: 1fr; }
+}
+.supplier-card{
+    border: 1px solid var(--stroke);
+    border-radius: 14px;
+    background: rgba(255,255,255,0.88);
+    box-shadow: 0 10px 22px rgba(2,6,23,0.05);
+    padding: 14px 14px 10px 14px;
+    transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+.supplier-card:hover{
+    transform: translateY(-2px);
+    box-shadow: 0 16px 32px rgba(2,6,23,0.08);
+    border-color: rgba(30,58,138,0.18);
+}
+.supplier-title{
+    font-weight: 850;
+    color: var(--text);
+    font-size: 16px;
+    margin-bottom: 4px;
+}
+.badges{
+    display:flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+.badge{
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    border: 1px solid rgba(15,23,42,0.10);
+    color: #334155;
+    background: rgba(255,255,255,0.75);
+}
+.badge.good{ background: var(--good); border-color: rgba(16,185,129,0.22); }
+.badge.warn{ background: var(--warn); border-color: rgba(245,158,11,0.22); }
+.kv-table{
+    width:100%;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+.kv-table td{
+    padding: 8px 8px;
+    border-bottom: 1px solid rgba(15,23,42,0.06);
+    vertical-align: top;
+}
+.kv-table td:first-child{
+    width: 44%;
+    color: #334155;
+    font-weight: 650;
+}
+.kv-table tr:nth-child(even) td{
+    background: rgba(15,23,42,0.02);
+}
 </style>
 """,
     unsafe_allow_html=True
@@ -180,14 +318,12 @@ def load_data(file) -> pd.DataFrame:
     else:
         df = pd.read_excel(file)
 
-    # Clean Column Headers
     clean_cols = []
     for c in df.columns:
         c_str = str(c).strip()
         c_str = c_str.replace("\\", "")
         c_str = c_str.replace('"', "").strip()
 
-        # Fix known typos
         if "Supplier tire" in c_str:
             c_str = "Tier 1"
         if "Teir" in c_str:
@@ -202,9 +338,6 @@ def load_data(file) -> pd.DataFrame:
 
 @st.cache_data(show_spinner=False)
 def aggregate_data(df: pd.DataFrame, group_col: str, pivot_col: str, features: list[str]) -> pd.DataFrame:
-    """
-    Aggregates data. If multiple values exist for the same cell, joins them.
-    """
     grouped = df.groupby([group_col, pivot_col])[features].agg(
         lambda x: ", ".join(sorted(set([str(v) for v in x if v != ""])))
     ).reset_index()
@@ -212,10 +345,6 @@ def aggregate_data(df: pd.DataFrame, group_col: str, pivot_col: str, features: l
 
 
 def compute_feature_coverage(agg_df: pd.DataFrame, supplier_col: str, features: list[str]) -> pd.DataFrame:
-    """
-    For each feature: count unique non-empty values across suppliers (post-aggregation),
-    and also count how many suppliers actually have a value for that feature.
-    """
     num_suppliers = int(agg_df[supplier_col].nunique()) if supplier_col in agg_df.columns else 0
     rows = []
     for f in features:
@@ -231,46 +360,146 @@ def compute_feature_coverage(agg_df: pd.DataFrame, supplier_col: str, features: 
     return out
 
 
-def zebra_styler(df: pd.DataFrame) -> "pd.io.formats.style.Styler":
-    """
-    Zebra stripes + hover, for a clean 'report-like' look.
-    Note: Styled tables may render less interactively than the default grid for very large data.
-    """
-    styles = [
-        {"selector": "thead th", "props": [("background-color", "rgba(30,58,138,0.06)"),
-                                          ("color", "#0f172a"),
-                                          ("font-weight", "700"),
-                                          ("border-bottom", "1px solid rgba(15,23,42,0.10)")]},
-        {"selector": "tbody tr:nth-child(even)", "props": [("background-color", "rgba(15,23,42,0.03)")]},
-        {"selector": "tbody tr:hover", "props": [("background-color", "rgba(30,58,138,0.07)")]},
-        {"selector": "td", "props": [("border-bottom", "1px solid rgba(15,23,42,0.06)"),
-                                     ("vertical-align", "top")]},
-        {"selector": "table", "props": [("border-collapse", "separate"), ("border-spacing", "0")]},
-    ]
-    return df.style.set_table_styles(styles)
+def _esc(x) -> str:
+    return html.escape("" if x is None else str(x))
 
 
-def render_dataframe(df: pd.DataFrame, height: int = 420, *, hide_index: bool = False) -> None:
-    """
-    Uses zebra styling for reasonable table sizes; falls back to the default fast grid for huge tables.
-    """
-    if df is None:
-        return
+def _shorten(s: str, limit: int = 120) -> str:
+    s = "" if s is None else str(s)
+    s = s.strip()
+    if len(s) <= limit:
+        return s
+    return s[: max(0, limit - 1)] + "…"
 
-    # Heuristic: styling for medium-ish tables only (keeps app fast)
-    cells = int(df.shape[0]) * int(max(1, df.shape[1]))
-    use_style = (df.shape[0] <= 2000) and (df.shape[1] <= 60) and (cells <= 80_000)
 
-    if use_style:
-        styled = zebra_styler(df)
-        if hide_index:
-            try:
-                styled = styled.hide(axis="index")
-            except Exception:
-                pass
-        st.dataframe(styled, use_container_width=True, height=height)
-    else:
-        st.dataframe(df, use_container_width=True, height=height, hide_index=hide_index)
+def build_compare_html(
+    data_by_supplier: dict,
+    suppliers: list[str],
+    features: list[str],
+    *,
+    show_only_differences: bool,
+    hide_empty_rows: bool,
+    strong_diff_threshold: int = 2
+) -> tuple[str, pd.DataFrame]:
+    """
+    Returns HTML for a sticky "spec compare" table + the underlying compare dataframe.
+    """
+    # Create compare df for export as well
+    compare_df = pd.DataFrame({"Feature": features})
+    for sup in suppliers:
+        compare_df[sup] = [data_by_supplier.get(sup, {}).get(f, "") for f in features]
+
+    # Decide diff rows
+    diff_flags = []
+    for f in features:
+        row_vals = []
+        for sup in suppliers:
+            v = str(data_by_supplier.get(sup, {}).get(f, "")).strip()
+            if v != "":
+                row_vals.append(v)
+        distinct = len(set(row_vals))
+        is_diff = distinct >= 2
+        diff_flags.append((is_diff, distinct))
+
+    # Build HTML
+    thead = "<thead><tr>"
+    thead += "<th><span class='spec-chip'>Feature</span></th>"
+    for sup in suppliers:
+        thead += f"<th><span class='spec-chip'>{_esc(sup)}</span></th>"
+    thead += "</tr></thead>"
+
+    rows_html = []
+    for i, f in enumerate(features):
+        is_diff, distinct = diff_flags[i]
+
+        if show_only_differences and not is_diff:
+            continue
+
+        # Hide row if all empty
+        if hide_empty_rows:
+            all_empty = True
+            for sup in suppliers:
+                if str(data_by_supplier.get(sup, {}).get(f, "")).strip() != "":
+                    all_empty = False
+                    break
+            if all_empty:
+                continue
+
+        tr = "<tr>"
+        tr += f"<td><div class='cell'><strong>{_esc(f)}</strong></div></td>"
+
+        for sup in suppliers:
+            raw = str(data_by_supplier.get(sup, {}).get(f, "")).strip()
+            if raw == "":
+                tr += "<td><div class='cell empty'>—</div></td>"
+            else:
+                cls = "cell"
+                if is_diff:
+                    cls += " diff"
+                    if distinct >= strong_diff_threshold:
+                        cls += " strong"
+                shown = _shorten(raw, 150)
+                tr += f"<td><div class='{cls}' title='{_esc(raw)}'>{_esc(shown)}</div></td>"
+        tr += "</tr>"
+        rows_html.append(tr)
+
+    tbody = "<tbody>" + "".join(rows_html) + "</tbody>"
+
+    html_table = f"""
+    <div class="spec-wrap">
+      <div class="spec-scroll">
+        <table class="spec-table">
+          {thead}
+          {tbody}
+        </table>
+      </div>
+    </div>
+    """
+    return html_table, compare_df
+
+
+def build_supplier_cards_html(
+    suppliers_ordered: list[str],
+    supplier_summary: dict,
+    supplier_feature_map: dict,
+    features: list[str],
+    *,
+    compact: bool = False
+) -> str:
+    """
+    Returns HTML grid of supplier cards. Details are rendered inside Streamlit expanders (below each card).
+    Here we only render the visible top area (title + badges).
+    """
+    cards = []
+    for sup in suppliers_ordered:
+        meta = supplier_summary.get(sup, {})
+        coverage_pct = meta.get("coverage_pct", 0)
+        filled = meta.get("filled", 0)
+        total = meta.get("total", len(features))
+        recs = meta.get("records", 0)
+
+        # Badge severity
+        if coverage_pct >= 75:
+            cov_class = "good"
+        elif coverage_pct >= 40:
+            cov_class = ""
+        else:
+            cov_class = "warn"
+
+        cards.append(f"""
+        <div class="supplier-card">
+            <div class="supplier-title">{_esc(sup)}</div>
+            <div class="badges">
+                <div class="badge {cov_class}">Coverage: <strong>{coverage_pct:.0f}%</strong></div>
+                <div class="badge">Filled: <strong>{filled}</strong> / {total}</div>
+                <div class="badge">Records: <strong>{recs}</strong></div>
+            </div>
+            <div class="note-muted">{_esc("Click the expander below to view feature details.")}</div>
+        </div>
+        """)
+
+    grid = '<div class="supplier-grid">' + "".join(cards) + "</div>"
+    return grid
 
 
 # ==========================================
@@ -293,7 +522,6 @@ with st.sidebar:
         st.markdown("<div class='card hover-lift'>", unsafe_allow_html=True)
         st.header("⚙️ Configuration")
 
-        # Smart Auto-Selection of Columns
         idx_die = 0
         idx_sup = 0
         for i, col in enumerate(cols):
@@ -341,7 +569,6 @@ if not uploaded_file:
     )
     st.stop()
 
-# ---- Dataset overview (now in expander) ----
 base_rows, base_cols = df.shape
 preview_rows = min(5, base_rows)
 
@@ -356,8 +583,8 @@ with st.expander("Dataset overview", expanded=False):
             <div style='color:#475569; line-height: 1.65;'>
                 • <strong>{base_rows}</strong> rows loaded<br>
                 • <strong>{base_cols}</strong> columns detected<br>
-                • Grouping: <em>{c_die}</em><br>
-                • Supplier: <em>{c_supplier}</em>
+                • Grouping: <em>{_esc(c_die)}</em><br>
+                • Supplier: <em>{_esc(c_supplier)}</em>
             </div>
             """,
             unsafe_allow_html=True
@@ -367,14 +594,13 @@ with st.expander("Dataset overview", expanded=False):
     with preview_col:
         st.markdown("<div class='card hover-lift'>", unsafe_allow_html=True)
         st.caption("First few rows (sanity check)")
-        render_dataframe(df.head(preview_rows), height=240, hide_index=False)
+        st.dataframe(df.head(preview_rows), use_container_width=True, height=240)
         st.markdown("</div>", unsafe_allow_html=True)
 
 if not c_features:
     st.error("Please select at least one feature from the sidebar.")
     st.stop()
 
-# ---- Filter context ----
 unique_groups = sorted(list(set(df[c_die].astype(str))))
 if not unique_groups:
     st.error("No data found in the selected grouping column.")
@@ -434,20 +660,16 @@ if agg_df.empty:
     st.warning("No data available for this selection.")
     st.stop()
 
-# Views
-view_catalog = agg_df.set_index(c_supplier)[c_features]
-view_matrix = view_catalog.transpose()
-
-# ---- Altair coverage chart (after KPIs) ----
+# coverage chart input
 coverage_df = compute_feature_coverage(agg_df, c_supplier, c_features)
 
+# ---- Altair coverage chart (after KPIs) ----
 st.markdown("<div class='card hover-lift' style='margin-top: 1rem;'>", unsafe_allow_html=True)
 st.markdown("#### Supplier feature coverage")
 st.caption("Bars show how many **unique non-empty values** exist per feature across suppliers (post-aggregation).")
 
 if HAS_ALTAIR:
     hover = alt.selection_point(on="mouseover", fields=["Feature"], nearest=True, empty=False)
-
     chart = (
         alt.Chart(coverage_df)
         .mark_bar()
@@ -473,19 +695,188 @@ else:
 
 st.markdown("</div>", unsafe_allow_html=True)
 
-# ---- Tabs ----
-tab_matrix, tab_catalog = st.tabs(["📊 Compare View (Matrix)", "📋 Catalog View (List)"])
+# =========================================================
+# Build website-like maps for Compare + Catalog
+# =========================================================
+suppliers_all = sorted([s for s in agg_df[c_supplier].astype(str).unique().tolist() if str(s).strip() != ""])
+if not suppliers_all:
+    st.warning("No suppliers found (empty supplier column for this selection).")
+    st.stop()
+
+# Per-supplier feature values (already aggregated)
+supplier_feature_map = {}
+for _, row in agg_df.iterrows():
+    sup = str(row[c_supplier]).strip()
+    if sup == "":
+        continue
+    supplier_feature_map.setdefault(sup, {})
+    for f in c_features:
+        supplier_feature_map[sup][f] = str(row.get(f, "")).strip()
+
+# Supplier record counts (raw subset)
+supplier_records = subset.groupby(c_supplier).size().to_dict()
+
+# Coverage summary per supplier
+supplier_summary = {}
+for sup in suppliers_all:
+    filled = 0
+    for f in c_features:
+        if str(supplier_feature_map.get(sup, {}).get(f, "")).strip() != "":
+            filled += 1
+    total = len(c_features)
+    coverage_pct = (filled / total * 100.0) if total else 0.0
+    supplier_summary[sup] = {
+        "filled": filled,
+        "total": total,
+        "coverage_pct": coverage_pct,
+        "records": int(supplier_records.get(sup, 0)),
+    }
+
+# ==========================================
+# 5) TABS: Website-like Compare + Catalog
+# ==========================================
+tab_matrix, tab_catalog = st.tabs(["📊 Compare View", "📋 Catalog View"])
 
 with tab_matrix:
     st.markdown("<div class='card hover-lift'>", unsafe_allow_html=True)
-    st.markdown("#### ⚔️ Head-to-Head Comparison")
-    st.caption(f"Comparing **{len(c_features)} features** across **{num_suppliers} suppliers**. (Suppliers are columns)")
-    render_dataframe(view_matrix, height=460, hide_index=False)
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("#### ⚔️ Supplier Comparison Builder")
+    st.caption("Pick suppliers + features. The compare table is sticky, highlights differences, and can show only differences.")
+
+    # Controls
+    ctl1, ctl2, ctl3 = st.columns([1.6, 1.4, 1], gap="large")
+
+    # Default: top 4 suppliers by record count
+    top_by_records = sorted(suppliers_all, key=lambda s: supplier_summary.get(s, {}).get("records", 0), reverse=True)
+    default_compare = top_by_records[:4] if len(top_by_records) >= 2 else top_by_records
+
+    with ctl1:
+        compare_suppliers = st.multiselect(
+            "Suppliers to compare",
+            suppliers_all,
+            default=default_compare,
+        )
+    with ctl2:
+        compare_features = st.multiselect(
+            "Features to include",
+            c_features,
+            default=c_features,
+        )
+    with ctl3:
+        show_only_diff = st.toggle("Only differences", value=False)
+        hide_empty_rows = st.toggle("Hide empty rows", value=True)
+
+    if len(compare_suppliers) < 2:
+        st.info("Select at least **2 suppliers** to compare.")
+        st.markdown("</div>", unsafe_allow_html=True)
+    elif len(compare_features) == 0:
+        st.info("Select at least **1 feature**.")
+        st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        # Build compare HTML
+        html_table, compare_df = build_compare_html(
+            supplier_feature_map,
+            compare_suppliers,
+            compare_features,
+            show_only_differences=show_only_diff,
+            hide_empty_rows=hide_empty_rows,
+            strong_diff_threshold=2
+        )
+
+        st.markdown(
+            "<div class='note-muted'>Tip: hover cells to see full value (tooltip). Sticky header + first column stay visible.</div>",
+            unsafe_allow_html=True
+        )
+        st.markdown(html_table, unsafe_allow_html=True)
+
+        # Download compare data
+        csv_bytes = compare_df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Download comparison (CSV)",
+            data=csv_bytes,
+            file_name=f"compare_{selected_group}.csv".replace(" ", "_"),
+            mime="text/csv",
+            use_container_width=False
+        )
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
 with tab_catalog:
     st.markdown("<div class='card hover-lift'>", unsafe_allow_html=True)
     st.markdown("#### 📚 Supplier Catalog")
-    st.caption("Detailed breakdown per supplier. (Suppliers are rows)")
-    render_dataframe(view_catalog, height=460, hide_index=False)
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.caption("Browse suppliers like a real catalog: search, sort, and open details per supplier.")
+
+    # Catalog controls
+    c1, c2, c3 = st.columns([1.6, 1.2, 1.2], gap="large")
+    with c1:
+        q = st.text_input("Search supplier", value="", placeholder="Type a supplier name…")
+    with c2:
+        sort_by = st.selectbox(
+            "Sort by",
+            ["Coverage (desc)", "Records (desc)", "Name (A→Z)", "Name (Z→A)"],
+            index=0
+        )
+    with c3:
+        filter_feature = st.selectbox(
+            "Filter: supplier must have value for feature",
+            ["(no filter)"] + list(c_features),
+            index=0
+        )
+
+    # Filter suppliers
+    filtered = suppliers_all
+    if q.strip():
+        ql = q.strip().lower()
+        filtered = [s for s in filtered if ql in s.lower()]
+
+    if filter_feature != "(no filter)":
+        f = filter_feature
+        filtered = [
+            s for s in filtered
+            if str(supplier_feature_map.get(s, {}).get(f, "")).strip() != ""
+        ]
+
+    # Sort suppliers
+    if sort_by == "Coverage (desc)":
+        filtered = sorted(filtered, key=lambda s: supplier_summary.get(s, {}).get("coverage_pct", 0), reverse=True)
+    elif sort_by == "Records (desc)":
+        filtered = sorted(filtered, key=lambda s: supplier_summary.get(s, {}).get("records", 0), reverse=True)
+    elif sort_by == "Name (A→Z)":
+        filtered = sorted(filtered, key=lambda s: s.lower())
+    else:
+        filtered = sorted(filtered, key=lambda s: s.lower(), reverse=True)
+
+    if not filtered:
+        st.info("No suppliers match your filters.")
+        st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        # Render the card grid header area (HTML)
+        st.markdown(build_supplier_cards_html(filtered, supplier_summary, supplier_feature_map, c_features), unsafe_allow_html=True)
+
+        # Details expanders (Streamlit controls) — “site-like”: cards + expand details
+        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+
+        for sup in filtered:
+            meta = supplier_summary.get(sup, {})
+            coverage_pct = meta.get("coverage_pct", 0)
+
+            with st.expander(f"{sup} — {coverage_pct:.0f}% coverage", expanded=False):
+                # Build feature/value table (HTML)
+                rows = []
+                for f in c_features:
+                    val = str(supplier_feature_map.get(sup, {}).get(f, "")).strip()
+                    if val == "":
+                        val_disp = "<span style='color:#94a3b8;'>—</span>"
+                    else:
+                        val_disp = _esc(val)
+                    rows.append(f"<tr><td>{_esc(f)}</td><td>{val_disp}</td></tr>")
+
+                table_html = f"""
+                <table class="kv-table">
+                    <tbody>
+                        {''.join(rows)}
+                    </tbody>
+                </table>
+                """
+                st.markdown(table_html, unsafe_allow_html=True)
+
+        st.markdown("</div>", unsafe_allow_html=True)
