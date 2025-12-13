@@ -92,14 +92,13 @@ def load_data(file):
     for c in df.columns:
         c_str = str(c).strip()
         
-        # FIX: Replaced complex regex with simple regex to avoid SyntaxError
-        # Removes "" patterns
+        # 1. Remove patterns safely
         c_str = re.sub(r"\", "", c_str)
         
-        # Remove extra double quotes if any exist
-        c_str = c_str.replace('"', '').strip()
+        # 2. Remove double quotes and backslashes safely
+        c_str = c_str.replace('"', '').replace('\\', '').strip()
         
-        # Fix known typos
+        # 3. Fix known typos
         if "Supplier tire" in c_str: c_str = "Tier 1"
         if "Teir" in c_str: c_str = "Tier 1"
         
@@ -139,11 +138,10 @@ with st.sidebar:
         st.header("⚙️ Configuration")
         
         # Smart Auto-Selection of Columns
-        # Tries to find 'Die Family' or defaults to 2nd column
-        # Using safely defined indices
         idx_die = 0
         idx_sup = 0
         
+        # Safe Loop to find indices
         for i, col in enumerate(cols):
             if "Die Family" in col: idx_die = i
             if "Latest" in col or "Company" in col: idx_sup = i
